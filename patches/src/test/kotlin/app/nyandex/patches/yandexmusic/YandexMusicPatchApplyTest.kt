@@ -627,6 +627,18 @@ class YandexMusicPatchApplyTest {
             value,
             "passport_account_type resource was not renamed",
         )
+
+        // Another Yandex app owns this signature permission on most devices, and redeclaring it
+        // fails the install with INSTALL_FAILED_DUPLICATE_PERMISSION.
+        val manifest = aapt2("dump", "xmltree", "--file", "AndroidManifest.xml", apk.absolutePath)
+        val declaresReadCredentials = Regex(
+            """E: permission \(line=\d+\)(?:\r?\n\s+A: [^\n]*)*?\r?\n\s+A: [^\n]*android:name[^\n]*"com\.yandex\.permission\.READ_CREDENTIALS"""",
+        ).containsMatchIn(manifest)
+        assertFalse(declaresReadCredentials, "com.yandex.permission.READ_CREDENTIALS is still declared")
+        assertTrue(
+            manifest.contains("\"com.yandex.permission.AM_COMMUNICATION\""),
+            "The AM_COMMUNICATION request the Passport library checks for was removed",
+        )
     }
 
     private fun resolveAapt2(): File {
