@@ -1,10 +1,10 @@
 {
   "NOTE": "Do NOT manually edit this file. This file is automatically updated when semantic release (release.yml) runs. Manually editing this file can break your releases and break third party tools that use this file.",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "patches": [
     {
-      "name": "Block Plus analytics",
-      "description": "Redirects Plus event/acquisition hosts and obsolete dynamic-page triggers to loopback while leaving the music and payment APIs untouched.",
+      "name": "Блокировать аналитику Плюса",
+      "description": "Перенаправляет на localhost хосты событий и привлечения Плюса, а также устаревшие триггеры динамических страниц. API музыки и платежей не затрагиваются.",
       "default": true,
       "category": null,
       "compatiblePackages": [
@@ -47,8 +47,8 @@
       "options": []
     },
     {
-      "name": "Disable Play Billing",
-      "description": "Neutralizes Play Billing and Play Core binder actions. Purchases are not possible, and no billing request reaches Google Play.",
+      "name": "Настройки Nyandex",
+      "description": "Добавляет страницу «Настройки Nyandex», которая открывается новой строкой вверху настроек приложения. Там же показываются параметры патчей.",
       "default": true,
       "category": null,
       "compatiblePackages": [
@@ -91,8 +91,8 @@
       "options": []
     },
     {
-      "name": "Disable telemetry",
-      "description": "Disables AppsFlyer, AppMetrica, OpenTelemetry and Firebase/Crashlytics endpoints and service descriptors.",
+      "name": "Отдельный аккаунт Passport",
+      "description": "Даёт переподписанному приложению собственный тип аккаунта Passport, чтобы Android разрешил создать в нём аккаунт Яндекса, а оригинальные приложения Яндекса сохранили общий.",
       "default": true,
       "category": null,
       "compatiblePackages": [
@@ -135,8 +135,8 @@
       "options": []
     },
     {
-      "name": "Hide bottom bar tabs",
-      "description": "Adds switches to the Nyandex settings page to hide bottom bar tabs (My Vibe, Main, Podcasts, Concerts, For kids, Collection). Applies after a restart.",
+      "name": "Отключить Play Billing",
+      "description": "Отключает вызовы Play Billing и Play Core. Покупки становятся недоступны, и ни один платёжный запрос не доходит до Google Play.",
       "default": true,
       "category": null,
       "compatiblePackages": [
@@ -179,8 +179,8 @@
       "options": []
     },
     {
-      "name": "Isolate Passport account",
-      "description": "Gives the re-signed app its own Passport account type so Android lets it create a Yandex account while the stock Yandex apps keep the shared one.",
+      "name": "Отключить телеметрию",
+      "description": "Отключает адреса и описания сервисов AppsFlyer, AppMetrica, OpenTelemetry и Firebase/Crashlytics.",
       "default": true,
       "category": null,
       "compatiblePackages": [
@@ -223,8 +223,8 @@
       "options": []
     },
     {
-      "name": "Lyrics fallback (LRCLIB)",
-      "description": "Loads lyrics from LRCLIB (lrclib.net) when Yandex sends its Plus subscription notice instead of the lyrics. Real Yandex lyrics and errors are left untouched.",
+      "name": "Подменить заголовок сертификата Firebase",
+      "description": "Передаёт сертификат оригинального приложения в заголовке X-Android-Cert, который использует Firebase Installations, чтобы переподпись APK не ломала Firebase.",
       "default": true,
       "category": null,
       "compatiblePackages": [
@@ -267,8 +267,184 @@
       "options": []
     },
     {
-      "name": "Monet theme",
-      "description": "Uses the Android 12+ wallpaper colors (Material You) for cards, accents, the primary button and the My Vibe buttons; the page background stays black. The Light / Dark / System setting keeps working. Older Android versions keep the stock colors.",
+      "name": "Подменить подпись приложения",
+      "description": "Приложение видит свою оригинальную подпись Яндекса, поэтому вход через Яндекс ID и другие проверки подписи работают после переподписи APK в Morphe. Нужен для входа.",
+      "default": true,
+      "category": null,
+      "compatiblePackages": [
+        {
+          "packageName": "ru.yandex.music",
+          "name": "Yandex Music",
+          "description": null,
+          "apkFileType": "APK_REQUIRED",
+          "appIconColor": "#FFCC00",
+          "signatures": null,
+          "formFactor": "MOBILE",
+          "targets": [
+            {
+              "version": "2026.11.1 #171gpr",
+              "versionCodes": {
+                "ARM64_V8A": 24026561,
+                "ARMEABI_V7A": 24026561,
+                "X86_64": 24026561,
+                "X86": 24026561
+              },
+              "isExperimental": false,
+              "minSdk": 24,
+              "description": null
+            },
+            {
+              "version": "2026.11.2 #172.1gpr",
+              "versionCodes": {
+                "ARM64_V8A": 24026572,
+                "ARMEABI_V7A": 24026572,
+                "X86_64": 24026572,
+                "X86": 24026572
+              },
+              "isExperimental": false,
+              "minSdk": 32,
+              "description": null
+            }
+          ]
+        }
+      ],
+      "options": []
+    },
+    {
+      "name": "Разблокировать Яндекс Плюс",
+      "description": "Принудительно задаёт hasPlus, hasMusicSubscription, serviceAvailable и isChild в DTO музыкальной сессии и профиля Passport. Сервер по-прежнему видит настоящий аккаунт.",
+      "default": true,
+      "category": null,
+      "compatiblePackages": [
+        {
+          "packageName": "ru.yandex.music",
+          "name": "Yandex Music",
+          "description": null,
+          "apkFileType": "APK_REQUIRED",
+          "appIconColor": "#FFCC00",
+          "signatures": null,
+          "formFactor": "MOBILE",
+          "targets": [
+            {
+              "version": "2026.11.1 #171gpr",
+              "versionCodes": {
+                "ARM64_V8A": 24026561,
+                "ARMEABI_V7A": 24026561,
+                "X86_64": 24026561,
+                "X86": 24026561
+              },
+              "isExperimental": false,
+              "minSdk": 24,
+              "description": null
+            },
+            {
+              "version": "2026.11.2 #172.1gpr",
+              "versionCodes": {
+                "ARM64_V8A": 24026572,
+                "ARMEABI_V7A": 24026572,
+                "X86_64": 24026572,
+                "X86": 24026572
+              },
+              "isExperimental": false,
+              "minSdk": 32,
+              "description": null
+            }
+          ]
+        }
+      ],
+      "options": []
+    },
+    {
+      "name": "Скрыть вкладки нижней панели",
+      "description": "Добавляет на страницу настроек Nyandex переключатели для скрытия вкладок нижней панели (Моя волна, Главная, Подкасты, Концерты, Детям, Коллекция). Применяется после перезапуска.",
+      "default": true,
+      "category": null,
+      "compatiblePackages": [
+        {
+          "packageName": "ru.yandex.music",
+          "name": "Yandex Music",
+          "description": null,
+          "apkFileType": "APK_REQUIRED",
+          "appIconColor": "#FFCC00",
+          "signatures": null,
+          "formFactor": "MOBILE",
+          "targets": [
+            {
+              "version": "2026.11.1 #171gpr",
+              "versionCodes": {
+                "ARM64_V8A": 24026561,
+                "ARMEABI_V7A": 24026561,
+                "X86_64": 24026561,
+                "X86": 24026561
+              },
+              "isExperimental": false,
+              "minSdk": 24,
+              "description": null
+            },
+            {
+              "version": "2026.11.2 #172.1gpr",
+              "versionCodes": {
+                "ARM64_V8A": 24026572,
+                "ARMEABI_V7A": 24026572,
+                "X86_64": 24026572,
+                "X86": 24026572
+              },
+              "isExperimental": false,
+              "minSdk": 32,
+              "description": null
+            }
+          ]
+        }
+      ],
+      "options": []
+    },
+    {
+      "name": "Тексты песен из LRCLIB",
+      "description": "Загружает текст песни из LRCLIB (lrclib.net), когда Яндекс вместо текста присылает предложение оформить Плюс. Настоящие тексты Яндекса и ошибки не трогаются.",
+      "default": true,
+      "category": null,
+      "compatiblePackages": [
+        {
+          "packageName": "ru.yandex.music",
+          "name": "Yandex Music",
+          "description": null,
+          "apkFileType": "APK_REQUIRED",
+          "appIconColor": "#FFCC00",
+          "signatures": null,
+          "formFactor": "MOBILE",
+          "targets": [
+            {
+              "version": "2026.11.1 #171gpr",
+              "versionCodes": {
+                "ARM64_V8A": 24026561,
+                "ARMEABI_V7A": 24026561,
+                "X86_64": 24026561,
+                "X86": 24026561
+              },
+              "isExperimental": false,
+              "minSdk": 24,
+              "description": null
+            },
+            {
+              "version": "2026.11.2 #172.1gpr",
+              "versionCodes": {
+                "ARM64_V8A": 24026572,
+                "ARMEABI_V7A": 24026572,
+                "X86_64": 24026572,
+                "X86": 24026572
+              },
+              "isExperimental": false,
+              "minSdk": 32,
+              "description": null
+            }
+          ]
+        }
+      ],
+      "options": []
+    },
+    {
+      "name": "Тема Monet",
+      "description": "Окрашивает карточки, акценты, основную кнопку и кнопки «Моей волны» в цвета обоев Android 12+ (Material You); фон страниц остаётся чёрным. Настройка «Светлая / Тёмная / Системная» продолжает работать. На старых версиях Android цвета остаются стандартными.",
       "default": false,
       "category": null,
       "compatiblePackages": [
@@ -311,184 +487,8 @@
       "options": []
     },
     {
-      "name": "Nyandex settings",
-      "description": "Adds a \"Nyandex Settings\" page, opened from a new row at the top of the app's settings. Patches with options show them there.",
-      "default": true,
-      "category": null,
-      "compatiblePackages": [
-        {
-          "packageName": "ru.yandex.music",
-          "name": "Yandex Music",
-          "description": null,
-          "apkFileType": "APK_REQUIRED",
-          "appIconColor": "#FFCC00",
-          "signatures": null,
-          "formFactor": "MOBILE",
-          "targets": [
-            {
-              "version": "2026.11.1 #171gpr",
-              "versionCodes": {
-                "ARM64_V8A": 24026561,
-                "ARMEABI_V7A": 24026561,
-                "X86_64": 24026561,
-                "X86": 24026561
-              },
-              "isExperimental": false,
-              "minSdk": 24,
-              "description": null
-            },
-            {
-              "version": "2026.11.2 #172.1gpr",
-              "versionCodes": {
-                "ARM64_V8A": 24026572,
-                "ARMEABI_V7A": 24026572,
-                "X86_64": 24026572,
-                "X86": 24026572
-              },
-              "isExperimental": false,
-              "minSdk": 32,
-              "description": null
-            }
-          ]
-        }
-      ],
-      "options": []
-    },
-    {
-      "name": "Remove tracking headers",
-      "description": "Stops adding X-Request-Id and Yandex device identifiers to music and Plus requests.",
-      "default": true,
-      "category": null,
-      "compatiblePackages": [
-        {
-          "packageName": "ru.yandex.music",
-          "name": "Yandex Music",
-          "description": null,
-          "apkFileType": "APK_REQUIRED",
-          "appIconColor": "#FFCC00",
-          "signatures": null,
-          "formFactor": "MOBILE",
-          "targets": [
-            {
-              "version": "2026.11.1 #171gpr",
-              "versionCodes": {
-                "ARM64_V8A": 24026561,
-                "ARMEABI_V7A": 24026561,
-                "X86_64": 24026561,
-                "X86": 24026561
-              },
-              "isExperimental": false,
-              "minSdk": 24,
-              "description": null
-            },
-            {
-              "version": "2026.11.2 #172.1gpr",
-              "versionCodes": {
-                "ARM64_V8A": 24026572,
-                "ARMEABI_V7A": 24026572,
-                "X86_64": 24026572,
-                "X86": 24026572
-              },
-              "isExperimental": false,
-              "minSdk": 32,
-              "description": null
-            }
-          ]
-        }
-      ],
-      "options": []
-    },
-    {
-      "name": "Spoof Firebase certificate header",
-      "description": "Reports the stock app certificate in the X-Android-Cert header used by Firebase Installations, so re-signing the APK does not break Firebase.",
-      "default": true,
-      "category": null,
-      "compatiblePackages": [
-        {
-          "packageName": "ru.yandex.music",
-          "name": "Yandex Music",
-          "description": null,
-          "apkFileType": "APK_REQUIRED",
-          "appIconColor": "#FFCC00",
-          "signatures": null,
-          "formFactor": "MOBILE",
-          "targets": [
-            {
-              "version": "2026.11.1 #171gpr",
-              "versionCodes": {
-                "ARM64_V8A": 24026561,
-                "ARMEABI_V7A": 24026561,
-                "X86_64": 24026561,
-                "X86": 24026561
-              },
-              "isExperimental": false,
-              "minSdk": 24,
-              "description": null
-            },
-            {
-              "version": "2026.11.2 #172.1gpr",
-              "versionCodes": {
-                "ARM64_V8A": 24026572,
-                "ARMEABI_V7A": 24026572,
-                "X86_64": 24026572,
-                "X86": 24026572
-              },
-              "isExperimental": false,
-              "minSdk": 32,
-              "description": null
-            }
-          ]
-        }
-      ],
-      "options": []
-    },
-    {
-      "name": "Spoof app signature",
-      "description": "Makes the app see its original Yandex signature, so Yandex ID login and other signature checks keep working after Morphe re-signs the APK. Required for login.",
-      "default": true,
-      "category": null,
-      "compatiblePackages": [
-        {
-          "packageName": "ru.yandex.music",
-          "name": "Yandex Music",
-          "description": null,
-          "apkFileType": "APK_REQUIRED",
-          "appIconColor": "#FFCC00",
-          "signatures": null,
-          "formFactor": "MOBILE",
-          "targets": [
-            {
-              "version": "2026.11.1 #171gpr",
-              "versionCodes": {
-                "ARM64_V8A": 24026561,
-                "ARMEABI_V7A": 24026561,
-                "X86_64": 24026561,
-                "X86": 24026561
-              },
-              "isExperimental": false,
-              "minSdk": 24,
-              "description": null
-            },
-            {
-              "version": "2026.11.2 #172.1gpr",
-              "versionCodes": {
-                "ARM64_V8A": 24026572,
-                "ARMEABI_V7A": 24026572,
-                "X86_64": 24026572,
-                "X86": 24026572
-              },
-              "isExperimental": false,
-              "minSdk": 32,
-              "description": null
-            }
-          ]
-        }
-      ],
-      "options": []
-    },
-    {
-      "name": "Unlock Yandex Plus",
-      "description": "Forces hasPlus, hasMusicSubscription, serviceAvailable and isChild in the music session and Passport profile DTOs. The server still sees the real account.",
+      "name": "Убрать заголовки отслеживания",
+      "description": "Перестаёт добавлять X-Request-Id и идентификаторы устройства Яндекса в запросы Музыки и Плюса.",
       "default": true,
       "category": null,
       "compatiblePackages": [

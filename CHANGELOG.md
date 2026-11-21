@@ -1,3 +1,9 @@
+## [1.2.0](https://github.com/Ser1-1y/nyandex/compare/v1.1.1...v1.2.0) (2026-11-21)
+
+### ✨ New Features
+
+* translate patch names and descriptions to Russian ([489d1b8](https://github.com/Ser1-1y/nyandex/commit/489d1b861e120ead36a332d5cbb74a347766f80b))
+
 ## [1.1.1](https://github.com/Ser1-1y/nyandex/compare/v1.1.0...v1.1.1) (2026-11-21)
 
 ### 🐛 Bug Fixes
