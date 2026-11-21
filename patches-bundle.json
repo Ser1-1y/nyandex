@@ -1,8 +1,8 @@
 {
-  "created_at": "2026-11-21T05:19:01",
-  "description": "## [1.5.4](https://github.com/Ser1-1y/nyandex/compare/v1.5.3...v1.5.4) (2026-11-21)",
-  "download_url": "https://github.com/Ser1-1y/nyandex/releases/download/v1.5.4/patches-1.5.4.mpp",
+  "created_at": "2026-11-21T11:38:41",
+  "description": "## [1.5.5](https://github.com/Ser1-1y/nyandex/compare/v1.5.4...v1.5.5) (2026-11-21)\n\n### 🐛 Bug Fixes\n\n* retry failed LRCLIB requests before showing the toast ([7a88e02](https://github.com/Ser1-1y/nyandex/commit/7a88e0240b4de030f2217227130a8e80d0a36dc7))",
+  "download_url": "https://github.com/Ser1-1y/nyandex/releases/download/v1.5.5/patches-1.5.5.mpp",
   "signature_download_url": "",
-  "version": "1.5.4",
+  "version": "1.5.5",
   "public_key": "bHYC5dGZH1n9TJJeU6+FO3/E31TKayvIUQxiOBis3TM="
 }

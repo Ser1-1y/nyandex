@@ -1,3 +1,9 @@
+## [1.5.5](https://github.com/Ser1-1y/nyandex/compare/v1.5.4...v1.5.5) (2026-11-21)
+
+### 🐛 Bug Fixes
+
+* retry failed LRCLIB requests before showing the toast ([7a88e02](https://github.com/Ser1-1y/nyandex/commit/7a88e0240b4de030f2217227130a8e80d0a36dc7))
+
 ## [1.5.4](https://github.com/Ser1-1y/nyandex/compare/v1.5.3...v1.5.4) (2026-11-21)
 
 ## [1.5.3](https://github.com/Ser1-1y/nyandex/compare/v1.5.2...v1.5.3) (2026-11-21)
