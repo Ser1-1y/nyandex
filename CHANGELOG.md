@@ -1,3 +1,9 @@
+## [1.1.1](https://github.com/Ser1-1y/nyandex/compare/v1.1.0...v1.1.1) (2026-11-21)
+
+### 🐛 Bug Fixes
+
+* verify release workflow permissions ([3d85984](https://github.com/Ser1-1y/nyandex/commit/3d85984cbebfbfebfde0a00cee6f0d3070f3b6f6))
+
 ## [1.1.0](https://github.com/Ser1-1y/nyandex/compare/v1.0.0...v1.1.0) (2026-11-21)
 
 ### ✨ New Features
