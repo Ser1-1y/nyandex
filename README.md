@@ -7,7 +7,7 @@
 > Expect bugs, read the code before you trust it, and use it at your own risk.
 
 Yandex Music patches for [Morphe](https://morphe.software): lyrics from LRCLIB, a Material You
-theme, hideable bottom-bar tabs, an in-app settings page, and privacy fixes.
+theme, hideable bottom-bar tabs, haptic feedback, an in-app settings page, and privacy fixes.
 
 Nyandex is an independent project. It is compatible with Morphe but not made by or affiliated
 with the Morphe project, and it is not affiliated with Yandex.
@@ -66,6 +66,12 @@ Morphe Manager compares the full version name, including the build suffix.
 - **Monet** is applied through Android 12+ dynamic colors. On older Android versions the app keeps
   its stock colors.
 - **Hidden tabs** disappear after restarting the app; the settings page offers a restart.
+  The remaining tabs share the bar's width: a tap anywhere in a tab's part of the bar opens it
+  (switch: Settings → Nyandex → Bottom bar).
+- **Haptic feedback** adds a short vibration to taps on buttons and tabs, long presses and
+  pull-to-refresh. It follows the system "Touch feedback" setting, and each kind can be turned
+  off on the Nyandex settings page. Taps on rows and other controls without a button role are
+  off by default.
 
 Patch names and descriptions are in Russian.
 

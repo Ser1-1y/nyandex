@@ -13,8 +13,12 @@ import app.morphe.patcher.patch.classDefByStrings
 import app.morphe.patcher.patch.classDefForEach
 import app.morphe.patcher.patch.mutableClassDefBy
 import app.morphe.patcher.patch.patch
+import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod
+import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod.Companion.toMutable
 import app.nyandex.patches.yandexmusic.shared.Constants.COMPATIBILITY_YANDEX_MUSIC
+import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.Opcode
+import com.android.tools.smali.dexlib2.builder.MutableMethodImplementation
 import com.android.tools.smali.dexlib2.iface.ClassDef
 import com.android.tools.smali.dexlib2.iface.Method
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
@@ -23,6 +27,8 @@ import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.reference.StringReference
+import com.android.tools.smali.dexlib2.immutable.ImmutableMethod
+import com.android.tools.smali.dexlib2.immutable.ImmutableMethodParameter
 import java.util.logging.Logger
 
 private val logger = Logger.getLogger("YandexMusicHideBottomBarTabs")
@@ -38,8 +44,7 @@ private val SET_TYPES = setOf(
 
 val hideBottomBarTabsPatch = patch(
     name = "Скрыть вкладки нижней панели",
-    description = "Добавляет на страницу настроек Nyandex переключатели для скрытия вкладок нижней панели " +
-        "(Моя волна, Главная, Подкасты, Концерты, Детям, Коллекция). Применяется после перезапуска.",
+    description = "Добавляет настройки скрытия нижних панелей в параметры Nyandex.",
 ) {
     compatibleWith(COMPATIBILITY_YANDEX_MUSIC)
 
@@ -99,6 +104,47 @@ private fun hookBottomBar() {
         "invoke-static {v$setRegister}, $BOTTOM_TABS_HOOK->filterTabs(Ljava/util/Set;)V",
     )
     logger.info("Hooked bottom bar tabs in ${ownerClass.type}.${method.name} (${adds.size} tab adds)")
+
+    addTouchOverride(ownerClass.type)
+}
+
+/**
+ * The tab icons are small boxes spread over the full bar width, so with few tabs most of the bar
+ * ignores touches. The bar view gets a `dispatchTouchEvent` override that lets the extension move
+ * a touch in the tab row to the icon of the slot it is in, and then restores the real position.
+ */
+private fun addTouchOverride(barType: String) {
+    val bar = mutableClassDefBy(barType)
+    if (bar.methods.any { it.name == "dispatchTouchEvent" }) {
+        throw PatchException("$barType already overrides dispatchTouchEvent")
+    }
+    bar.methods.add(createTouchOverride(barType))
+    logger.info("Added the tab touch area override to $barType")
+}
+
+private fun createTouchOverride(owner: String): MutableMethod {
+    val override = ImmutableMethod(
+        owner,
+        "dispatchTouchEvent",
+        listOf(ImmutableMethodParameter("Landroid/view/MotionEvent;", null, null)),
+        "Z",
+        AccessFlags.PUBLIC.value,
+        null,
+        null,
+        MutableMethodImplementation(3), // v0, p0 = v1, p1 = v2
+    ).toMutable()
+
+    override.addInstructions(
+        0,
+        """
+            invoke-static {p0, p1}, $BOTTOM_TABS_HOOK->beforeTouch(Landroid/view/View;Landroid/view/MotionEvent;)V
+            invoke-super {p0, p1}, Landroid/view/ViewGroup;->dispatchTouchEvent(Landroid/view/MotionEvent;)Z
+            move-result v0
+            invoke-static {p1}, $BOTTOM_TABS_HOOK->afterTouch(Landroid/view/MotionEvent;)V
+            return v0
+        """.trimIndent(),
+    )
+    return override
 }
 
 private fun ClassDef.hasString(value: String): Boolean = methods.any { method ->

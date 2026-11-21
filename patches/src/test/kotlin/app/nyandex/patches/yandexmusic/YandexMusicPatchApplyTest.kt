@@ -12,6 +12,7 @@ import app.morphe.patcher.PatcherConfig
 import app.nyandex.patches.yandexmusic.misc.account.isolatePassportAccountPatch
 import app.nyandex.patches.yandexmusic.misc.billing.disablePlayBillingPatch
 import app.nyandex.patches.yandexmusic.misc.entitlement.unlockYandexPlusPatch
+import app.nyandex.patches.yandexmusic.misc.haptics.hapticFeedbackPatch
 import app.nyandex.patches.yandexmusic.misc.lyrics.lyricsFallbackPatch
 import app.nyandex.patches.yandexmusic.misc.settings.hideBottomBarTabsPatch
 import app.nyandex.patches.yandexmusic.misc.settings.nyandexSettingsPatch
@@ -59,6 +60,7 @@ private const val NYANDEX_SETTINGS = "Lapp/nyandex/extension/yandexmusic/setting
 private const val SETTINGS_ENTRY = "Lapp/nyandex/extension/yandexmusic/settings/SettingsEntry;"
 private const val SETTINGS_ACTIVITY_TYPE = "Lapp/nyandex/extension/yandexmusic/settings/NyandexSettingsActivity;"
 private const val BOTTOM_TABS_HOOK = "Lapp/nyandex/extension/yandexmusic/settings/BottomTabsHook;"
+private const val HAPTICS_HOOK = "Lapp/nyandex/extension/yandexmusic/haptics/HapticsHook;"
 private const val SHARE_LINKS = "Lapp/nyandex/extension/yandexmusic/share/ShareLinks;"
 private const val MONET_COLORS = "Lapp/nyandex/extension/yandexmusic/monet/MonetColors;"
 
@@ -196,6 +198,7 @@ class YandexMusicPatchApplyTest {
                 hideBottomBarTabsPatch,
                 monetThemePatch,
                 cleanShareLinksPatch,
+                hapticFeedbackPatch,
             )
 
             val results = runBlocking { patcher().toList() }
@@ -250,6 +253,7 @@ class YandexMusicPatchApplyTest {
         verifyTrackCacheRow(dexFiles)
         verifyShareLinks(dexFiles)
         verifySettingsAndTabs(dexFiles, output)
+        verifyHaptics(dexFiles)
         verifyMonetTheme(output)
         verifyWaveButtonColors(dexFiles)
         verifyThemeLogoColor(dexFiles, output)
@@ -393,6 +397,53 @@ class YandexMusicPatchApplyTest {
         assertTrue(
             manifest.contains("\"app.nyandex.extension.yandexmusic.settings.NyandexSettingsActivity\""),
             "NyandexSettingsActivity is not declared in the manifest",
+        )
+    }
+
+    private fun verifyHaptics(dexFiles: List<DexFile>) {
+        val classes = dexFiles.flatMap { it.classes }
+        assertTrue(classes.any { it.type == HAPTICS_HOOK }, "Haptics extension class was not merged")
+
+        fun callers(owner: String, name: String) = classes
+            .filter { it.type != HAPTICS_HOOK }
+            .flatMap { classDef -> classDef.methods.map { classDef to it } }
+            .filter { (_, method) -> calls(method).any { it.isCall(owner, name) } }
+
+        // Compose's click elements pass their callbacks through the extension in the constructor.
+        val click = callers(HAPTICS_HOOK, "wrapClick").map { it.first.type to it.second.name }
+        assertEquals(
+            listOf(
+                "Landroidx/compose/foundation/ClickableElement;" to "<init>",
+                "Landroidx/compose/foundation/CombinedClickableElement;" to "<init>",
+            ),
+            click.sortedBy { it.first },
+            "Unexpected callers of wrapClick",
+        )
+        val longClick = callers(HAPTICS_HOOK, "wrapLongClick")
+        assertEquals(
+            listOf("Landroidx/compose/foundation/CombinedClickableElement;"),
+            longClick.map { it.first.type },
+            "Unexpected callers of wrapLongClick",
+        )
+        val refresh = callers(HAPTICS_HOOK, "onSpinner")
+        assertEquals(
+            listOf("Landroidx/swiperefreshlayout/widget/SwipeRefreshLayout;"),
+            refresh.map { it.first.type },
+            "Unexpected callers of onSpinner",
+        )
+
+        // The bottom bar view overrides dispatchTouchEvent to widen the tab touch area.
+        val touch = callers(BOTTOM_TABS_HOOK, "beforeTouch")
+        assertEquals(1, touch.size, "Expected one bar calling beforeTouch")
+        assertEquals("dispatchTouchEvent", touch.single().second.name)
+        assertTrue(
+            calls(touch.single().second).any { it.isCall(BOTTOM_TABS_HOOK, "afterTouch") },
+            "The touch position is not restored",
+        )
+        assertEquals(
+            touch.single().first.type,
+            callers(BOTTOM_TABS_HOOK, "filterTabs").single().first.type,
+            "The touch override and the tab filter are in different classes",
         )
     }
 

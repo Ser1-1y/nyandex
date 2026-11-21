@@ -152,6 +152,10 @@ public final class NyandexSettingsActivity extends Activity {
             addBottomTabsSection();
             anySection = true;
         }
+        if (NyandexSettings.hapticsAvailable()) {
+            addHapticsSection();
+            anySection = true;
+        }
         if (!anySection) {
             addSectionHeader(NyandexSettings.text("Nothing to set up", "Настраивать нечего"));
             addParagraph(NyandexSettings.text(
@@ -270,12 +274,50 @@ public final class NyandexSettingsActivity extends Activity {
         });
     }
 
+    private void addHapticsSection() {
+        addSectionHeader(NyandexSettings.text("Haptic feedback", "Тактильный отклик"));
+        addParagraph(NyandexSettings.text(
+                "A short vibration on taps. The system \"Touch feedback\" setting turns all of it off.",
+                "Короткая вибрация при нажатиях. Системная настройка «Отклик на касания» "
+                        + "отключает всё сразу."));
+        addSwitchRow(
+                NyandexSettings.text("Buttons and tabs", "Кнопки и вкладки"),
+                NyandexSettings.text("Bottom bar, player controls, like, switches",
+                        "Нижняя панель, управление плеером, лайк, переключатели"),
+                NyandexSettings.hapticsEnabled(NyandexSettings.HAPTICS_BUTTONS_KEY, true),
+                checked -> NyandexSettings.setHapticsEnabled(NyandexSettings.HAPTICS_BUTTONS_KEY, checked));
+        addSwitchRow(
+                NyandexSettings.text("Other taps", "Остальные нажатия"),
+                NyandexSettings.text("Rows, covers and controls without a button role",
+                        "Строки, обложки и элементы без роли кнопки"),
+                NyandexSettings.hapticsEnabled(NyandexSettings.HAPTICS_OTHER_TAPS_KEY, false),
+                checked -> NyandexSettings.setHapticsEnabled(NyandexSettings.HAPTICS_OTHER_TAPS_KEY, checked));
+        addSwitchRow(
+                NyandexSettings.text("Long press", "Долгое нажатие"),
+                NyandexSettings.text("When a context menu opens or an item is held",
+                        "Когда открывается меню или элемент удерживают"),
+                NyandexSettings.hapticsEnabled(NyandexSettings.HAPTICS_LONG_PRESS_KEY, true),
+                checked -> NyandexSettings.setHapticsEnabled(NyandexSettings.HAPTICS_LONG_PRESS_KEY, checked));
+        addSwitchRow(
+                NyandexSettings.text("Pull to refresh", "Обновление свайпом"),
+                null,
+                NyandexSettings.hapticsEnabled(NyandexSettings.HAPTICS_REFRESH_KEY, true),
+                checked -> NyandexSettings.setHapticsEnabled(NyandexSettings.HAPTICS_REFRESH_KEY, checked));
+    }
+
     private void addBottomTabsSection() {
         addSectionHeader(NyandexSettings.text("Bottom bar", "Нижняя панель"));
         addParagraph(NyandexSettings.text(
                 "Choose the tabs to show. Changes apply after the app restarts; at least one tab always stays.",
                 "Выберите, какие вкладки показывать. Изменения применятся после перезапуска приложения; "
                         + "хотя бы одна вкладка остаётся всегда."));
+
+        addSwitchRow(
+                NyandexSettings.text("Larger tab touch area", "Увеличенная область нажатия вкладок"),
+                NyandexSettings.text("A tap anywhere in a tab's share of the bar opens it",
+                        "Нажатие в любом месте отведённой вкладке части панели открывает её"),
+                NyandexSettings.tabTouchArea(),
+                NyandexSettings::setTabTouchArea);
 
         android.content.SharedPreferences preferences = NyandexSettings.preferences();
         for (String[] tab : NyandexSettings.BOTTOM_TABS) {
@@ -450,11 +492,28 @@ public final class NyandexSettingsActivity extends Activity {
         return view;
     }
 
+    /**
+     * A tick when a switch flips, only with the "Haptic feedback" patch and its "Buttons and
+     * tabs" switch on. performHapticFeedback already follows the system "Touch feedback" setting.
+     */
+    private void toggleHaptic(View view, boolean checked) {
+        if (!NyandexSettings.hapticsAvailable()
+                || !NyandexSettings.hapticsEnabled(NyandexSettings.HAPTICS_BUTTONS_KEY, true)) {
+            return;
+        }
+        int effect = Build.VERSION.SDK_INT >= 34
+                ? (checked ? android.view.HapticFeedbackConstants.TOGGLE_ON
+                : android.view.HapticFeedbackConstants.TOGGLE_OFF)
+                : android.view.HapticFeedbackConstants.CLOCK_TICK;
+        view.performHapticFeedback(effect);
+    }
+
     private View addSwitchRow(String title, String subtitle, boolean checked, final OnToggle onToggle) {
         final PillSwitch toggle = new PillSwitch(this, palette.primary, palette.background, checked);
         toggle.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         View row = addRow(title, subtitle, toggle, dp(52), dp(32), view -> {
             toggle.setChecked(!toggle.isChecked(), true);
+            toggleHaptic(toggle, toggle.isChecked());
             onToggle.onToggle(toggle.isChecked());
         });
         row.setAccessibilityDelegate(new View.AccessibilityDelegate() {

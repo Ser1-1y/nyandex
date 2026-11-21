@@ -21,6 +21,7 @@ public final class NyandexSettings {
     static final String TAG = "NyandexSettings";
     static final String PREFERENCES = "nyandex";
     static final String HIDDEN_TAB_PREFIX = "hide_tab_";
+    static final String TAB_TOUCH_AREA_KEY = "tab_touch_area";
 
     /** Keys read by the LRCLIB lyrics extension (LrcLibLyrics). */
     static final String LYRICS_OFFSET_KEY = "lyrics_offset_ms";
@@ -32,6 +33,13 @@ public final class NyandexSettings {
     static final int[] LYRICS_CACHE_LIMITS = {0, 500, 1000, 3000, 10000};
     static final int LYRICS_CACHE_LIMIT_DEFAULT = 3000;
     static final String LYRICS_CLASS = "app.nyandex.extension.yandexmusic.lyrics.LrcLibLyrics";
+
+    /** Keys read by the haptics extension (HapticsHook): switch name, default. */
+    static final String HAPTICS_CLASS = "app.nyandex.extension.yandexmusic.haptics.HapticsHook";
+    static final String HAPTICS_BUTTONS_KEY = "haptics_buttons";
+    static final String HAPTICS_OTHER_TAPS_KEY = "haptics_other_taps";
+    static final String HAPTICS_LONG_PRESS_KEY = "haptics_long_press";
+    static final String HAPTICS_REFRESH_KEY = "haptics_refresh";
     static final int LYRICS_OFFSET_STEP_MS = 100;
     static final int LYRICS_OFFSET_LIMIT_MS = 5000;
 
@@ -84,6 +92,17 @@ public final class NyandexSettings {
         return current == null ? null : current.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE);
     }
 
+    /** Whether a touch anywhere in a tab's share of the bottom bar counts as a tap on the tab. */
+    static boolean tabTouchArea() {
+        SharedPreferences preferences = preferences();
+        return preferences == null || preferences.getBoolean(TAB_TOUCH_AREA_KEY, true);
+    }
+
+    static void setTabTouchArea(boolean enabled) {
+        SharedPreferences preferences = preferences();
+        if (preferences != null) preferences.edit().putBoolean(TAB_TOUCH_AREA_KEY, enabled).apply();
+    }
+
     static boolean isTabHidden(SharedPreferences preferences, String tab) {
         return preferences.getBoolean(HIDDEN_TAB_PREFIX + tab, false);
     }
@@ -91,6 +110,26 @@ public final class NyandexSettings {
     static void setTabHidden(String tab, boolean hidden) {
         SharedPreferences preferences = preferences();
         if (preferences != null) preferences.edit().putBoolean(HIDDEN_TAB_PREFIX + tab, hidden).apply();
+    }
+
+    /** Whether the "Haptic feedback" patch is applied (its extension class is in the app). */
+    static boolean hapticsAvailable() {
+        try {
+            Class.forName(HAPTICS_CLASS);
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    static boolean hapticsEnabled(String key, boolean fallback) {
+        SharedPreferences preferences = preferences();
+        return preferences == null ? fallback : preferences.getBoolean(key, fallback);
+    }
+
+    static void setHapticsEnabled(String key, boolean enabled) {
+        SharedPreferences preferences = preferences();
+        if (preferences != null) preferences.edit().putBoolean(key, enabled).apply();
     }
 
     /** The lyrics extension class, present only when the "LRCLIB lyrics" patch is applied. */
