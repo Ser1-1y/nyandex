@@ -9,6 +9,9 @@ package app.nyandex.extension.yandexmusic.lyrics;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -122,10 +125,20 @@ public final class LrcLibLyrics {
         }
     }
 
+    /**
+     * The lookup stopped before LRCLIB failed three times (interrupted, or LRCLIB's Retry-After
+     * has not passed yet), so it is not reported as unreachable.
+     */
+    private static class QuietException extends IOException {
+        QuietException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
     /** Not sent: LRCLIB's last Retry-After has not passed yet. */
-    private static final class WaitException extends UnreachableException {
+    private static final class WaitException extends QuietException {
         WaitException(String message) {
-            super(message);
+            super(message, null);
         }
     }
 
@@ -394,7 +407,7 @@ public final class LrcLibLyrics {
                 lyrics = load(trackId, requested);
             } catch (IOException exception) {
                 Log.w(TAG, "LRCLIB unreachable for track " + trackId + ": " + exception);
-                toastUnreachable();
+                toastUnreachable(exception);
                 return null;
             }
             return withOffset(lyrics);
@@ -431,7 +444,7 @@ public final class LrcLibLyrics {
                     load(trackId, requested);
                 } catch (IOException exception) {
                     Log.w(TAG, "LRCLIB unreachable for track " + trackId + ": " + exception);
-                    toastUnreachable();
+                    toastUnreachable(exception);
                 } catch (Throwable throwable) {
                     Log.e(TAG, "LRCLIB lookup failed", throwable);
                 }
@@ -816,15 +829,25 @@ public final class LrcLibLyrics {
         return current == null ? null : current.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE);
     }
 
-    /** At most one toast per {@link #TOAST_INTERVAL_MS}: the app retries failed lyrics loads. */
-    private static void toastUnreachable() {
+    /**
+     * Toast that LRCLIB cannot be reached, after a request failed all its attempts. Not shown
+     * when the lookup stopped early ({@link QuietException}) or when the phone has no working
+     * internet connection at all: then the problem is not LRCLIB. At most one toast per
+     * {@link #TOAST_INTERVAL_MS}: the app retries failed lyrics loads.
+     */
+    private static void toastUnreachable(IOException exception) {
         try {
+            if (exception instanceof QuietException) return;
+            final Context current = appContext();
+            if (current == null) return;
+            if (isOffline(current)) {
+                Log.i(TAG, "No internet connection, no LRCLIB toast");
+                return;
+            }
+
             long now = SystemClock.elapsedRealtime();
             if (lastToastAt != 0 && now - lastToastAt < TOAST_INTERVAL_MS) return;
             lastToastAt = now;
-
-            final Context current = appContext();
-            if (current == null) return;
             new Handler(Looper.getMainLooper()).post(() -> {
                 try {
                     Toast.makeText(current, UNREACHABLE_MESSAGE, Toast.LENGTH_SHORT).show();
@@ -832,6 +855,25 @@ public final class LrcLibLyrics {
                 }
             });
         } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * Whether the phone has no working internet connection: no network, or one that Android
+     * did not validate (no internet, or a captive portal). False when it cannot be told.
+     */
+    private static boolean isOffline(Context context) {
+        try {
+            ConnectivityManager manager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (manager == null) return false;
+            Network network = manager.getActiveNetwork();
+            if (network == null) return true;
+            NetworkCapabilities capabilities = manager.getNetworkCapabilities(network);
+            return capabilities == null
+                    || !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    || !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+        } catch (Throwable throwable) {
+            return false;
         }
     }
 
@@ -928,7 +970,7 @@ public final class LrcLibLyrics {
                 Thread.sleep(delay);
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
-                throw failure;
+                throw new QuietException("Interrupted before attempt " + (attempt + 1), failure);
             }
         }
     }
