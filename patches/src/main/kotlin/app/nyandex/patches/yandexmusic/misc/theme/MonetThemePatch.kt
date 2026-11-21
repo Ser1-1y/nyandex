@@ -8,15 +8,19 @@
 package app.nyandex.patches.yandexmusic.misc.theme
 
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
+import app.morphe.patcher.extensions.InstructionExtensions.replaceInstruction
 import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.patch.classDefForEach
 import app.morphe.patcher.patch.mutableClassDefBy
 import app.morphe.patcher.patch.patch
 import app.morphe.patcher.patch.resourceXml
+import app.morphe.patcher.resource.ResourceType
+import app.morphe.patcher.resource.resourceId
 import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.WideLiteralInstruction
 import com.android.tools.smali.dexlib2.iface.Method
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
@@ -71,9 +75,10 @@ internal val MONET_COLORS = linkedMapOf(
 
 val monetThemePatch = patch(
     name = "Тема Monet",
-    description = "Окрашивает карточки, акценты, основную кнопку и кнопки «Моей волны» в цвета обоев " +
-        "Android 12+ (Material You); фон страниц остаётся чёрным. Настройка «Светлая / Тёмная / " +
-        "Системная» продолжает работать. На старых версиях Android цвета остаются стандартными.",
+    description = "Окрашивает карточки, акценты, основную кнопку, кнопку воспроизведения в плеере и " +
+        "кнопки «Моей волны» в цвета обоев Android 12+ (Material You); фон страниц остаётся чёрным. " +
+        "Настройка «Светлая / Тёмная / Системная» продолжает работать. На старых версиях Android " +
+        "цвета остаются стандартными.",
     default = false,
 ) {
     compatibleWith(COMPATIBILITY_YANDEX_MUSIC)
@@ -82,6 +87,7 @@ val monetThemePatch = patch(
 
     execute {
         hookWaveButtonColors()
+        useAccentForThemeLogoColor()
 
         // The stock values must exist; otherwise this build uses different color names.
         resourceXml("res/values/colors.xml").use { colors ->
@@ -175,6 +181,63 @@ private fun hookWaveButtonColors() {
         """,
     )
     logger.info("Hooked My Vibe button colors in $ownerType.${method.name} (agent $agent)")
+}
+
+/**
+ * The Compose theme (`o2u.j(Z, Composer)` in 2026.11.2) has an icon color read from
+ * `icon_logo_day` / `icon_logo_night`, but the app uses it as its accent: the full player's
+ * play / pause button (a filled circle with the symbol cut out), the My Shelf play button, the
+ * chart crown and other highlights. The real Yandex Music logo reads `icon_logo_*` directly and is
+ * not affected.
+ *
+ * The theme builder is switched to `icon_accent_day` / `icon_accent_night`, which are Monet colors
+ * on Android 12+. Their stock values equal the logo ones, so older Android versions look the same.
+ */
+private fun useAccentForThemeLogoColor() {
+    fun color(name: String) = resourceId(ResourceType.COLOR, name)
+    val replacements = mapOf(
+        color("icon_logo_day") to color("icon_accent_day"),
+        color("icon_logo_night") to color("icon_accent_night"),
+    )
+    // The builder reads every theme color; these guard against matching anything else.
+    val required = replacements.keys + replacements.values + listOf(
+        color("button_primary_day"),
+        color("button_primary_disabled_day"),
+        color("bg_placeholder_day"),
+    )
+
+    var found: Pair<String, Method>? = null
+    classDefForEach { classDef ->
+        classDef.methods.forEach { method ->
+            if (!method.accessFlags.isStatic()) return@forEach
+            val literals = method.implementation?.instructions
+                ?.mapNotNullTo(mutableSetOf()) { (it as? WideLiteralInstruction)?.wideLiteral }
+                ?: return@forEach
+            if (literals.containsAll(required)) {
+                if (found != null) throw PatchException("More than one Compose theme color builder")
+                found = classDef.type to method
+            }
+        }
+    }
+    val (ownerType, original) = found ?: throw PatchException("Compose theme color builder was not found")
+
+    val method = mutableClassDefBy(ownerType).methods.single {
+        it.name == original.name && it.parameterTypes == original.parameterTypes &&
+            it.returnType == original.returnType
+    }
+    var replaced = 0
+    method.implementation!!.instructions.toList().forEachIndexed { index, instruction ->
+        if (instruction.opcode != Opcode.CONST) return@forEachIndexed
+        val accent = replacements[(instruction as WideLiteralInstruction).wideLiteral] ?: return@forEachIndexed
+        val register = (instruction as OneRegisterInstruction).registerA
+        // Same format and size (const vAA, #+BBBBBBBB): no offsets move.
+        method.replaceInstruction(index, "const v$register, 0x${accent.toString(16)}")
+        replaced++
+    }
+    if (replaced != replacements.size) {
+        throw PatchException("Expected ${replacements.size} logo color constants in the theme, found $replaced")
+    }
+    logger.info("Theme logo color now follows icon_accent in $ownerType.${method.name}")
 }
 
 /** Index of `invoke-direct {this, uri, color, …}, Cover.<init>(String, String, …)`, or -1. */
