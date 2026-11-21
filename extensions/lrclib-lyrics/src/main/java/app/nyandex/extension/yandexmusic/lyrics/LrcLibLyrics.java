@@ -73,7 +73,7 @@ public final class LrcLibLyrics {
     private static final String KEEP_DIRECTORY = "nyandex-lyrics-downloads";
     private static final String[] DISK_FORMATS = {LrcLibCore.FORMAT_LRC, LrcLibCore.FORMAT_TEXT};
     /** Pause between LRCLIB lookups for downloaded tracks, to go easy on LRCLIB. */
-    private static final long DOWNLOAD_GAP_MS = 300;
+    private static final long DOWNLOAD_GAP_MS = 1000;
     /** After LRCLIB could not be reached, downloaded tracks wait this long before asking again. */
     private static final long DOWNLOAD_BACKOFF_MS = 60_000;
     /**
@@ -160,6 +160,16 @@ public final class LrcLibLyrics {
         thread.setPriority(Thread.MIN_PRIORITY);
         return thread;
     });
+
+    /** Background loads for callers on the main thread (the "Show lyrics" sheet). */
+    private static final ExecutorService LOADER = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "NyandexLyricsLoad");
+        thread.setDaemon(true);
+        return thread;
+    });
+
+    /** Name of the patch's static helper that builds the app's lyrics result (see the patch). */
+    private static final String RESULT_HELPER = "nyandexLrcLibLyrics";
 
     private static final ExecutorService PREFETCHER = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "NyandexLyricsPrefetch");
@@ -369,6 +379,53 @@ public final class LrcLibLyrics {
         } catch (Throwable throwable) {
             Log.e(TAG, "LRCLIB lookup failed", throwable);
             return null;
+        }
+    }
+
+    /**
+     * Called first by the patched lyrics download (a suspend function). On a background thread
+     * it returns false and the caller loads right away. On the main thread, where the "Show
+     * lyrics" sheet calls it, the lyrics are loaded on a background thread instead: this returns
+     * true, the caller returns COROUTINE_SUSPENDED, and once the lyrics are ready the patch's
+     * result helper builds the app's result on the main thread and the continuation is resumed
+     * with it.
+     *
+     * @param owner The lyrics repository class, which has the static result helper.
+     */
+    public static boolean lyricsAsync(String trackId, Object format, Object continuation, Class<?> owner) {
+        try {
+            if (Looper.myLooper() != Looper.getMainLooper()) return false;
+            if (trackId == null || format == null || continuation == null || owner == null) return false;
+            String requested = format instanceof Enum ? ((Enum<?>) format).name() : String.valueOf(format);
+            if (CACHE.containsKey(trackId + '|' + requested)) return false;
+
+            Class<?> formatClass = format instanceof Enum ? ((Enum<?>) format).getDeclaringClass() : format.getClass();
+            final java.lang.reflect.Method build = owner.getMethod(RESULT_HELPER, String.class, formatClass);
+            final java.lang.reflect.Method resume = Class.forName("kotlin.coroutines.Continuation")
+                    .getMethod("resumeWith", Object.class);
+            final Handler main = new Handler(Looper.getMainLooper());
+            LOADER.execute(() -> {
+                try {
+                    load(trackId, requested);
+                } catch (IOException exception) {
+                    Log.w(TAG, "LRCLIB unreachable for track " + trackId + ": " + exception);
+                    toastUnreachable();
+                } catch (Throwable throwable) {
+                    Log.e(TAG, "LRCLIB lookup failed", throwable);
+                }
+                main.post(() -> {
+                    try {
+                        // Answered from the memory cache now; a failed load gives the app's error result.
+                        resume.invoke(continuation, build.invoke(null, trackId, format));
+                    } catch (Throwable throwable) {
+                        Log.e(TAG, "Resuming the lyrics request failed", throwable);
+                    }
+                });
+            });
+            return true;
+        } catch (Throwable throwable) {
+            Log.e(TAG, "Async lyrics setup failed", throwable);
+            return false;
         }
     }
 

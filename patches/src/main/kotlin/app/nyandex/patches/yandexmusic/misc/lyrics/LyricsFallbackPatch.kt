@@ -39,6 +39,8 @@ internal const val LRCLIB_EXTENSION =
     "Lapp/nyandex/extension/yandexmusic/lyrics/LrcLibLyrics;"
 internal const val REMEMBER_TRACK_METHOD = "nyandexRememberLyricsTrack"
 internal const val LRCLIB_METHOD = "nyandexLrcLibLyrics"
+internal const val LYRICS_ENTRY_METHOD = "nyandexLyricsEntry"
+private const val COROUTINE_SUSPENDED = "COROUTINE_SUSPENDED"
 internal const val PREFETCH_NEXT_METHOD = "nyandexPrefetchNextLyrics"
 internal const val CACHE_ROW_METHOD = "nyandexLyricsCacheRow"
 private const val CACHE_ROW_TO_STRING = "TrackCacheRow(trackId="
@@ -414,12 +416,59 @@ private fun hookLyricsRepository() {
     )
     mutableRepository.methods.add(helper)
 
-    // The download method returns the helper's result before any of its own code runs.
-    // p1 (track id) and p2 (format) are adjacent; the method is an instance method.
+    // The download method is a suspend function: (trackId, format, durationMs, continuation).
+    // Callers on the main thread (the "Show lyrics" sheet) must not block, so the entry helper
+    // either answers right away or lets the extension load in the background, returns the
+    // COROUTINE_SUSPENDED marker and resumes the continuation later on the main thread.
+    val suspended = instructions.firstNotNullOfOrNull { instruction ->
+        ((instruction as? ReferenceInstruction)?.reference as? FieldReference)?.takeIf { field ->
+            instruction.opcode == Opcode.SGET_OBJECT &&
+                runCatching { classDefBy(field.type).hasStringConstant(COROUTINE_SUSPENDED) }.getOrDefault(false)
+        }
+    } ?: throw PatchException("COROUTINE_SUSPENDED marker was not found in the lyrics download method")
+
+    val entry = ImmutableMethod(
+        repositoryType,
+        LYRICS_ENTRY_METHOD,
+        listOf(
+            ImmutableMethodParameter(STRING, null, null),
+            ImmutableMethodParameter(formatType, null, null),
+            ImmutableMethodParameter(OBJECT, null, null),
+        ),
+        OBJECT,
+        AccessFlags.PUBLIC.value or AccessFlags.STATIC.value,
+        null,
+        null,
+        MutableMethodImplementation(5),
+    ).toMutable()
+    entry.addInstructions(
+        0,
+        """
+            const-class v0, $repositoryType
+            invoke-static {p0, p1, p2, v0}, $LRCLIB_EXTENSION->lyricsAsync(${STRING}${OBJECT}${OBJECT}Ljava/lang/Class;)Z
+            move-result v1
+            if-eqz v1, :now
+            sget-object v0, ${suspended.definingClass}->${suspended.name}:${suspended.type}
+            return-object v0
+            :now
+            invoke-static {p0, p1}, $repositoryType->$LRCLIB_METHOD($STRING$formatType)$OBJECT
+            move-result-object v0
+            return-object v0
+        """,
+    )
+    mutableRepository.methods.add(entry)
+
+    // The download method returns the entry helper's result before any of its own code runs.
+    // No branches here: labels inside snippets for existing methods break in Morphe Manager.
+    val locals = method.implementation!!.registerCount - 5 // this, trackId, format, duration, continuation
+    if (locals < 3) throw PatchException("Lyrics download method has too few registers ($locals)")
     method.addInstructions(
         0,
         """
-            invoke-static/range {p1 .. p2}, $repositoryType->$LRCLIB_METHOD($STRING$formatType)$OBJECT
+            move-object/from16 v0, p1
+            move-object/from16 v1, p2
+            move-object/from16 v2, p4
+            invoke-static {v0, v1, v2}, $repositoryType->$LYRICS_ENTRY_METHOD($STRING$formatType$OBJECT)$OBJECT
             move-result-object v0
             return-object v0
         """,
@@ -538,6 +587,7 @@ private fun hookTrackCacheRow() {
 }
 
 private fun ClassDef.hasStringConstant(value: String): Boolean = methods.any { it.hasStringConstant(value) }
+
 
 private fun Method.hasStringConstant(value: String): Boolean =
     implementation?.instructions?.any { instruction ->

@@ -535,15 +535,37 @@ class YandexMusicPatchApplyTest {
             calls(helper).any { it.isCall(LRCLIB_EXTENSION, "lyrics") },
             "Lyrics helper does not call the LRCLIB extension",
         )
+        // Entry helper: the extension may load in the background (main-thread callers), else the
+        // LRCLIB result helper answers right away.
+        val entry = repository.methods.single { it.name == "nyandexLyricsEntry" }
+        assertTrue(calls(entry).any { it.isCall(LRCLIB_EXTENSION, "lyricsAsync") }, "Entry does not try the async path")
+        assertTrue(calls(entry).any { it.isCall(repository.type, "nyandexLrcLibLyrics") }, "Entry does not build the result")
+        assertTrue(
+            entry.implementation!!.instructions.any { instruction ->
+                instruction.opcode == Opcode.SGET_OBJECT &&
+                    ((instruction as ReferenceInstruction).reference as FieldReference).let { field ->
+                        classes.single { it.type == field.definingClass }.methods.any { method ->
+                            method.implementation?.instructions?.any {
+                                ((it as? ReferenceInstruction)?.reference as? StringReference)?.string == "COROUTINE_SUSPENDED"
+                            } == true
+                        }
+                    }
+            },
+            "Entry does not return the COROUTINE_SUSPENDED marker",
+        )
+
         val callers = repository.methods.filter { method ->
-            calls(method).any { it.isCall(repository.type, "nyandexLrcLibLyrics") }
+            calls(method).any { it.isCall(repository.type, "nyandexLyricsEntry") }
         }
-        assertEquals(1, callers.size, "Expected exactly one call site of the lyrics helper")
+        assertEquals(1, callers.size, "Expected exactly one call site of the lyrics entry helper")
         val download = callers.single().implementation!!.instructions.toList()
         assertEquals(
-            listOf(Opcode.INVOKE_STATIC_RANGE, Opcode.MOVE_RESULT_OBJECT, Opcode.RETURN_OBJECT),
-            download.take(3).map { it.opcode },
-            "The download method does not return the LRCLIB result first",
+            listOf(
+                Opcode.MOVE_OBJECT_FROM16, Opcode.MOVE_OBJECT_FROM16, Opcode.MOVE_OBJECT_FROM16,
+                Opcode.INVOKE_STATIC, Opcode.MOVE_RESULT_OBJECT, Opcode.RETURN_OBJECT,
+            ),
+            download.take(6).map { it.opcode },
+            "The download method does not return the entry helper's result first",
         )
 
         // Lyric view report: returns success before reaching the Yandex API.
