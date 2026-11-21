@@ -26,7 +26,7 @@ internal object Constants {
     val COMPATIBILITY_YANDEX_MUSIC = Compatibility(
         name = "Yandex Music",
         packageName = "ru.yandex.music",
-        apkFileType = ApkFileType.APK_REQUIRED,
+        apkFileType = ApkFileType.APKM,
         appIconColor = 0xFFCC00,
         targets = listOf(
             AppTarget(
