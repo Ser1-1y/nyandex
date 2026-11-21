@@ -1,8 +1,8 @@
 {
-  "created_at": "2026-11-21T04:48:40",
-  "description": "## [1.5.1](https://github.com/Ser1-1y/nyandex/compare/v1.5.0...v1.5.1) (2026-11-21)\n\n### 🐛 Bug Fixes\n\n* draw the settings switches like the app's ([ada72d1](https://github.com/Ser1-1y/nyandex/commit/ada72d1b54eeab4011433aa6ae6c8cdb04b69b34))",
-  "download_url": "https://github.com/Ser1-1y/nyandex/releases/download/v1.5.1/patches-1.5.1.mpp",
+  "created_at": "2026-11-21T04:55:06",
+  "description": "## [1.5.2](https://github.com/Ser1-1y/nyandex/compare/v1.5.1...v1.5.2) (2026-11-21)",
+  "download_url": "https://github.com/Ser1-1y/nyandex/releases/download/v1.5.2/patches-1.5.2.mpp",
   "signature_download_url": "",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "public_key": "bHYC5dGZH1n9TJJeU6+FO3/E31TKayvIUQxiOBis3TM="
 }
