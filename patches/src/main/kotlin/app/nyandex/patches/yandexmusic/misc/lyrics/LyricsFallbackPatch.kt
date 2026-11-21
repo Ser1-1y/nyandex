@@ -57,9 +57,9 @@ private const val LIST = "Ljava/util/List;"
 private const val ARRAY_LIST = "Ljava/util/ArrayList;"
 
 val lyricsFallbackPatch = patch(
-    name = "Lyrics fallback (LRCLIB)",
-    description = "Loads lyrics from LRCLIB (lrclib.net) when Yandex sends its Plus subscription " +
-        "notice instead of the lyrics. Real Yandex lyrics and errors are left untouched.",
+    name = "Тексты песен из LRCLIB",
+    description = "Загружает текст песни из LRCLIB (lrclib.net), когда Яндекс вместо текста присылает " +
+        "предложение оформить Плюс. Настоящие тексты Яндекса и ошибки не трогаются.",
 ) {
     compatibleWith(COMPATIBILITY_YANDEX_MUSIC)
 

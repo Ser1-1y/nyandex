@@ -68,9 +68,9 @@ private val TELEMETRY_FILE_STRINGS = listOf(
 )
 
 val disableTelemetryPatch = patch(
-    name = "Disable telemetry",
-    description = "Disables AppsFlyer, AppMetrica, OpenTelemetry and Firebase/Crashlytics " +
-        "endpoints and service descriptors.",
+    name = "Отключить телеметрию",
+    description = "Отключает адреса и описания сервисов AppsFlyer, AppMetrica, OpenTelemetry " +
+        "и Firebase/Crashlytics.",
 ) {
     compatibleWith(COMPATIBILITY_YANDEX_MUSIC)
 

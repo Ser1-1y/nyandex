@@ -62,9 +62,9 @@ private object FirebaseCertificateHeaderFingerprint : Fingerprint(
  * mod; it only fixes the documented Firebase header.
  */
 val spoofFirebaseCertPatch = patch(
-    name = "Spoof Firebase certificate header",
-    description = "Reports the stock app certificate in the X-Android-Cert header used " +
-        "by Firebase Installations, so re-signing the APK does not break Firebase.",
+    name = "Подменить заголовок сертификата Firebase",
+    description = "Передаёт сертификат оригинального приложения в заголовке X-Android-Cert, который " +
+        "использует Firebase Installations, чтобы переподпись APK не ломала Firebase.",
 ) {
     compatibleWith(COMPATIBILITY_YANDEX_MUSIC)
 

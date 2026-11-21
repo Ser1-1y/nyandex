@@ -37,9 +37,9 @@ private val SET_TYPES = setOf(
 )
 
 val hideBottomBarTabsPatch = patch(
-    name = "Hide bottom bar tabs",
-    description = "Adds switches to the Nyandex settings page to hide bottom bar tabs " +
-        "(My Vibe, Main, Podcasts, Concerts, For kids, Collection). Applies after a restart.",
+    name = "Скрыть вкладки нижней панели",
+    description = "Добавляет на страницу настроек Nyandex переключатели для скрытия вкладок нижней панели " +
+        "(Моя волна, Главная, Подкасты, Концерты, Детям, Коллекция). Применяется после перезапуска.",
 ) {
     compatibleWith(COMPATIBILITY_YANDEX_MUSIC)
 

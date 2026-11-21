@@ -55,9 +55,9 @@ private const val INTEGER = "Ljava/lang/Integer;"
 private const val FUNCTION0 = "Lkotlin/jvm/functions/Function0;"
 
 val nyandexSettingsPatch = patch(
-    name = "Nyandex settings",
-    description = "Adds a \"Nyandex Settings\" page, opened from a new row at the top of the app's " +
-        "settings. Patches with options show them there.",
+    name = "Настройки Nyandex",
+    description = "Добавляет страницу «Настройки Nyandex», которая открывается новой строкой вверху " +
+        "настроек приложения. Там же показываются параметры патчей.",
 ) {
     compatibleWith(COMPATIBILITY_YANDEX_MUSIC)
 

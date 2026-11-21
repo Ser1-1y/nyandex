@@ -30,9 +30,9 @@ private val TRACKING_HEADERS = arrayOf(
 )
 
 val removeTrackingHeadersPatch = patch(
-    name = "Remove tracking headers",
-    description = "Stops adding X-Request-Id and Yandex device identifiers to music and " +
-        "Plus requests.",
+    name = "Убрать заголовки отслеживания",
+    description = "Перестаёт добавлять X-Request-Id и идентификаторы устройства Яндекса в запросы " +
+        "Музыки и Плюса.",
 ) {
     compatibleWith(COMPATIBILITY_YANDEX_MUSIC)
 

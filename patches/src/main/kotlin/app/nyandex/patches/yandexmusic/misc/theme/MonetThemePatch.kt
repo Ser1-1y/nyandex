@@ -70,10 +70,10 @@ internal val MONET_COLORS = linkedMapOf(
 )
 
 val monetThemePatch = patch(
-    name = "Monet theme",
-    description = "Uses the Android 12+ wallpaper colors (Material You) for cards, accents, the " +
-        "primary button and the My Vibe buttons; the page background stays black. The Light / " +
-        "Dark / System setting keeps working. Older Android versions keep the stock colors.",
+    name = "Тема Monet",
+    description = "Окрашивает карточки, акценты, основную кнопку и кнопки «Моей волны» в цвета обоев " +
+        "Android 12+ (Material You); фон страниц остаётся чёрным. Настройка «Светлая / Тёмная / " +
+        "Системная» продолжает работать. На старых версиях Android цвета остаются стандартными.",
     default = false,
 ) {
     compatibleWith(COMPATIBILITY_YANDEX_MUSIC)

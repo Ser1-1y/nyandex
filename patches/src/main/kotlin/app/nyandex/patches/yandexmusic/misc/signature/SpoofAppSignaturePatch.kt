@@ -19,9 +19,9 @@ import app.nyandex.patches.yandexmusic.shared.Constants.COMPATIBILITY_YANDEX_MUS
  * login does not work without it.
  */
 val spoofAppSignaturePatch = patch(
-    name = "Spoof app signature",
-    description = "Makes the app see its original Yandex signature, so Yandex ID login and other " +
-        "signature checks keep working after Morphe re-signs the APK. Required for login.",
+    name = "Подменить подпись приложения",
+    description = "Приложение видит свою оригинальную подпись Яндекса, поэтому вход через Яндекс ID и " +
+        "другие проверки подписи работают после переподписи APK в Morphe. Нужен для входа.",
 ) {
     compatibleWith(COMPATIBILITY_YANDEX_MUSIC)
 

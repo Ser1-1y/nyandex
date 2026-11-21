@@ -34,9 +34,9 @@ private const val ISOLATED_ACCOUNT_TYPE = "com.yandex.passport.morphe"
  * (actions, permissions, provider authorities) are intentionally left untouched.
  */
 val isolatePassportAccountPatch = patch(
-    name = "Isolate Passport account",
-    description = "Gives the re-signed app its own Passport account type so Android lets " +
-        "it create a Yandex account while the stock Yandex apps keep the shared one.",
+    name = "Отдельный аккаунт Passport",
+    description = "Даёт переподписанному приложению собственный тип аккаунта Passport, чтобы Android " +
+        "разрешил создать в нём аккаунт Яндекса, а оригинальные приложения Яндекса сохранили общий.",
 ) {
     compatibleWith(COMPATIBILITY_YANDEX_MUSIC)
 
