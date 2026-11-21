@@ -67,7 +67,7 @@ public final class NyandexSettingsActivity extends Activity {
 
         Palette(boolean dark) {
             this.dark = dark;
-            background = dark ? 0xFF1B1B1D : 0xFFFFFFFF;
+            background = dark ? 0xFF000000 : 0xFFFFFFFF;
             primary = dark ? 0xE6FFFFFF : 0xE6000000;
             secondary = dark ? 0x80FFFFFF : 0x80000000;
             button = dark ? 0xFF2E2E31 : 0xFFF1F0EE;
@@ -451,16 +451,12 @@ public final class NyandexSettingsActivity extends Activity {
     }
 
     private View addSwitchRow(String title, String subtitle, boolean checked, final OnToggle onToggle) {
-        final Switch toggle = new Switch(this);
-        toggle.setShowText(false);
-        toggle.setThumbDrawable(switchThumb());
-        toggle.setTrackDrawable(switchTrack());
-        toggle.setChecked(checked);
-        toggle.setOnCheckedChangeListener((button, isChecked) -> onToggle.onToggle(isChecked));
+        final PillSwitch toggle = new PillSwitch(this, palette.primary, palette.background, checked);
         toggle.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        View row = addRow(title, subtitle, toggle, ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT, view -> toggle.toggle());
-        toggle.setClickable(false);
+        View row = addRow(title, subtitle, toggle, dp(52), dp(32), view -> {
+            toggle.setChecked(!toggle.isChecked(), true);
+            onToggle.onToggle(toggle.isChecked());
+        });
         row.setAccessibilityDelegate(new View.AccessibilityDelegate() {
             @Override
             public void onInitializeAccessibilityNodeInfo(View host, android.view.accessibility.AccessibilityNodeInfo info) {
@@ -548,26 +544,6 @@ public final class NyandexSettingsActivity extends Activity {
 
     // region Drawables
 
-    /** Outlined pill when off, filled when on, like the app's switches. */
-    private Drawable switchTrack() {
-        GradientDrawable off = rounded(Color.TRANSPARENT, dp(16));
-        off.setStroke(dp(2), palette.primary);
-        off.setSize(dp(52), dp(32));
-        GradientDrawable on = rounded(palette.primary, dp(16));
-        on.setSize(dp(52), dp(32));
-        StateListDrawable track = new StateListDrawable();
-        track.addState(new int[]{android.R.attr.state_checked}, on);
-        track.addState(new int[]{}, off);
-        return track;
-    }
-
-    private Drawable switchThumb() {
-        StateListDrawable thumb = new StateListDrawable();
-        thumb.addState(new int[]{android.R.attr.state_checked}, new InsetDrawable(dot(palette.background, dp(20)), dp(6)));
-        thumb.addState(new int[]{}, new InsetDrawable(dot(palette.primary, dp(20)), dp(6)));
-        return thumb;
-    }
-
     private Drawable radio(boolean selected) {
         GradientDrawable ring = oval(Color.TRANSPARENT);
         ring.setStroke(dp(2), selected ? palette.primary : palette.secondary);
@@ -595,6 +571,103 @@ public final class NyandexSettingsActivity extends Activity {
         drawable.setCornerRadius(radius);
         drawable.setColor(color);
         return drawable;
+    }
+
+    /**
+     * The app's switch, measured on its settings screen: a 52×32 dp pill. Off: a 2 dp outline and
+     * a 16 dp thumb on the left. On: a filled pill and a 24 dp thumb in the background color,
+     * 4 dp from the right edge. Drawn by hand: the platform Switch re-tints and re-measures
+     * custom drawables.
+     */
+    private static final class PillSwitch extends View {
+        private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint thumb = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final android.graphics.RectF bounds = new android.graphics.RectF();
+        private final int foreground;
+        private final int background;
+        private final float density;
+        private boolean checked;
+        /** 0 = off, 1 = on; animated between the two. */
+        private float progress;
+        private android.animation.ValueAnimator animator;
+
+        PillSwitch(Context context, int foreground, int background, boolean checked) {
+            super(context);
+            this.foreground = foreground;
+            this.background = background;
+            this.density = context.getResources().getDisplayMetrics().density;
+            this.checked = checked;
+            this.progress = checked ? 1f : 0f;
+            stroke.setStyle(Paint.Style.STROKE);
+            stroke.setStrokeWidth(2 * density);
+            fill.setStyle(Paint.Style.FILL);
+            thumb.setStyle(Paint.Style.FILL);
+        }
+
+        boolean isChecked() {
+            return checked;
+        }
+
+        void setChecked(boolean value, boolean animate) {
+            if (value == checked) return;
+            checked = value;
+            if (animator != null) animator.cancel();
+            float target = value ? 1f : 0f;
+            if (!animate) {
+                progress = target;
+                invalidate();
+                return;
+            }
+            animator = android.animation.ValueAnimator.ofFloat(progress, target);
+            animator.setDuration(150);
+            animator.addUpdateListener(animation -> {
+                progress = (Float) animation.getAnimatedValue();
+                invalidate();
+            });
+            animator.start();
+        }
+
+        @Override
+        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            setMeasuredDimension(Math.round(52 * density), Math.round(32 * density));
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            float width = getWidth();
+            float height = getHeight();
+            float radius = height / 2f;
+            float half = stroke.getStrokeWidth() / 2f;
+
+            // Outline fades out while the fill fades in.
+            stroke.setColor(withAlpha(foreground, 1f - progress));
+            bounds.set(half, half, width - half, height - half);
+            canvas.drawRoundRect(bounds, radius - half, radius - half, stroke);
+            fill.setColor(withAlpha(foreground, progress));
+            bounds.set(0, 0, width, height);
+            canvas.drawRoundRect(bounds, radius, radius, fill);
+
+            float thumbRadius = (8 + 4 * progress) * density;
+            float startX = 16 * density;
+            float endX = width - 16 * density;
+            thumb.setColor(blend(foreground, background, progress));
+            canvas.drawCircle(startX + (endX - startX) * progress, height / 2f, thumbRadius, thumb);
+        }
+
+        private static int withAlpha(int color, float fraction) {
+            int alpha = Math.round(Color.alpha(color) * Math.max(0f, Math.min(1f, fraction)));
+            return (color & 0x00FFFFFF) | (alpha << 24);
+        }
+
+        private static int blend(int from, int to, float fraction) {
+            float inverse = 1f - fraction;
+            return Color.argb(
+                    Math.round(Color.alpha(from) * inverse + Color.alpha(to) * fraction),
+                    Math.round(Color.red(from) * inverse + Color.red(to) * fraction),
+                    Math.round(Color.green(from) * inverse + Color.green(to) * fraction),
+                    Math.round(Color.blue(from) * inverse + Color.blue(to) * fraction));
+        }
     }
 
     /** The app's back arrow: a shaft with two strokes, drawn so no app icon resource is needed. */
