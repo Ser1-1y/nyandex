@@ -28,6 +28,7 @@ import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
+import com.android.tools.smali.dexlib2.iface.reference.StringReference
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethod
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethodParameter
 import java.util.logging.Logger
@@ -39,6 +40,9 @@ internal const val LRCLIB_EXTENSION =
 internal const val REMEMBER_TRACK_METHOD = "nyandexRememberLyricsTrack"
 internal const val LRCLIB_METHOD = "nyandexLrcLibLyrics"
 internal const val PREFETCH_NEXT_METHOD = "nyandexPrefetchNextLyrics"
+internal const val CACHE_ROW_METHOD = "nyandexLyricsCacheRow"
+private const val CACHE_ROW_TO_STRING = "TrackCacheRow(trackId="
+private const val CACHE_TYPE_LABEL = ", cacheType="
 
 /** Signing key of the lyrics request. Only the lyrics repository contains it. */
 private const val LYRICS_SIGN_KEY = "p93jhgh689SBReK6ghtw62"
@@ -56,8 +60,8 @@ private const val ARRAY_LIST = "Ljava/util/ArrayList;"
 val lyricsFallbackPatch = patch(
     name = "Тексты песен из LRCLIB",
     description = "Тексты песен загружаются только из LRCLIB (lrclib.net), API текстов Яндекса не используется. " +
-        "Текст можно открыть у любого трека; текст следующего трека загружается заранее и сохраняется " +
-        "для офлайна. Если LRCLIB недоступен, появляется уведомление.",
+        "Текст можно открыть у любого трека; текст следующего трека и скачанных треков загружается заранее " +
+        "и сохраняется для офлайна. Если LRCLIB недоступен, появляется уведомление.",
 ) {
     compatibleWith(COMPATIBILITY_YANDEX_MUSIC)
 
@@ -67,6 +71,7 @@ val lyricsFallbackPatch = patch(
         val trackType = hookTrackConstructor()
         hookLyricsRepository()
         hookNextQueueItem(trackType)
+        hookTrackCacheRow()
     }
 }
 
@@ -452,6 +457,104 @@ private fun hookLyricsRepository() {
             "(parser ${parser.definingClass}.${parser.name}, info $infoType, format $formatType, " +
             "success $successType, http error $httpErrorType)",
     )
+}
+
+/**
+ * Load the lyrics of downloaded tracks. The app's track cache row (`i1x` in 2026.11.2,
+ * `TrackCacheRow` in its toString) is built when a track is cached or downloaded and whenever the
+ * cache database is read. Its constructor hands the track id and the cache type enum
+ * (TemporaryCache, AutoCache, SmartCache, PermanentStrong, PermanentWeak) to the extension.
+ *
+ * Both fields are taken from toString: the field read right after the "TrackCacheRow(trackId="
+ * and ", cacheType=" labels. The track id is a small class with one String field.
+ */
+private fun hookTrackCacheRow() {
+    val row = classDefByStrings(CACHE_ROW_TO_STRING).singleOrNull { candidate ->
+        candidate.methods.any { it.name == "toString" && it.hasStringConstant(CACHE_ROW_TO_STRING) }
+    } ?: throw PatchException("Track cache row was not found")
+    val toString = row.methods.single { it.name == "toString" && it.parameterTypes.isEmpty() }
+    val idField = toString.fieldAfterString(CACHE_ROW_TO_STRING, row.type)
+        ?: throw PatchException("Track cache row id field was not found")
+    val typeField = toString.fieldAfterString(CACHE_TYPE_LABEL, row.type)
+        ?: throw PatchException("Track cache row type field was not found")
+
+    val idClass = classDefBy(idField.type)
+    val idString = idClass.fields.filter { !AccessFlags.STATIC.isSet(it.accessFlags) && it.type == STRING }
+        .singleOrNull() ?: throw PatchException("Track id class ${idField.type} has no single String field")
+    val typeClass = classDefBy(typeField.type)
+    if (typeClass.fields.none { it.name == "PermanentStrong" } && !typeClass.hasStringConstant("PermanentStrong")) {
+        throw PatchException("Track cache type ${typeField.type} is not the cache type enum")
+    }
+
+    val mutableRow = mutableClassDefBy(row.type)
+    val helper = ImmutableMethod(
+        row.type,
+        CACHE_ROW_METHOD,
+        listOf(ImmutableMethodParameter(row.type, null, null)),
+        "V",
+        AccessFlags.PUBLIC.value or AccessFlags.STATIC.value,
+        null,
+        null,
+        MutableMethodImplementation(3),
+    ).toMutable()
+    helper.addInstructions(
+        0,
+        """
+            :try_start
+            iget-object v0, p0, ${row.type}->${idField.name}:${idField.type}
+            if-eqz v0, :done
+            iget-object v0, v0, ${idField.type}->${idString.name}:$STRING
+            iget-object v1, p0, ${row.type}->${typeField.name}:${typeField.type}
+            invoke-static {v0, v1}, $LRCLIB_EXTENSION->cacheRow($STRING$OBJECT)V
+            :try_end
+            .catch Ljava/lang/Throwable; {:try_start .. :try_end} :done
+            :done
+            return-void
+        """,
+    )
+    mutableRow.methods.add(helper)
+
+    var hooked = 0
+    mutableRow.methods.filter { it.name == "<init>" && it != helper }.forEach { constructor ->
+        val instructions = constructor.instructionsList()
+        // Only the constructor that sets the fields; a delegating one would report the row twice.
+        val setsId = instructions.any { instruction ->
+            val field = (instruction as? ReferenceInstruction)?.reference as? FieldReference
+            instruction.opcode == Opcode.IPUT_OBJECT && field?.definingClass == row.type && field.name == idField.name
+        }
+        if (!setsId) return@forEach
+        if (constructor.writesRegister(constructor.thisRegister())) {
+            throw PatchException("Track cache row constructor reuses the this register")
+        }
+        instructions.mapIndexedNotNull { index, instruction -> index.takeIf { instruction.opcode == Opcode.RETURN_VOID } }
+            .asReversed()
+            .forEach { index ->
+                constructor.addInstructions(index, "invoke-static/range {p0 .. p0}, ${row.type}->$CACHE_ROW_METHOD(${row.type})V")
+            }
+        hooked++
+    }
+    if (hooked != 1) throw PatchException("Expected one track cache row constructor, hooked $hooked")
+    logger.info("Track cache row ${row.type}: id ${idField.name}.${idString.name}, type ${typeField.name}")
+}
+
+private fun ClassDef.hasStringConstant(value: String): Boolean = methods.any { it.hasStringConstant(value) }
+
+private fun Method.hasStringConstant(value: String): Boolean =
+    implementation?.instructions?.any { instruction ->
+        ((instruction as? ReferenceInstruction)?.reference as? StringReference)?.string == value
+    } == true
+
+/** The first instance field of [owner] read after the string constant [label]. */
+private fun Method.fieldAfterString(label: String, owner: String): FieldReference? {
+    val instructions = implementation?.instructions?.toList() ?: return null
+    val start = instructions.indexOfFirst { instruction ->
+        ((instruction as? ReferenceInstruction)?.reference as? StringReference)?.string == label
+    }
+    if (start < 0) return null
+    return instructions.drop(start + 1).firstNotNullOfOrNull { instruction ->
+        ((instruction as? ReferenceInstruction)?.reference as? FieldReference)
+            ?.takeIf { instruction.opcode == Opcode.IGET_OBJECT && it.definingClass == owner }
+    }
 }
 
 private fun ClassDef.requireField(name: String, type: String) {

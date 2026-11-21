@@ -250,6 +250,15 @@ class LrcLibCoreTest {
     }
 
     @Test
+    fun `every cache type but the temporary playback cache is a download`() {
+        listOf("PermanentStrong", "PermanentWeak", "AutoCache", "SmartCache").forEach {
+            assertTrue(call("isDownloadedCacheType", it) as Boolean, it)
+        }
+        assertFalse(call("isDownloadedCacheType", "TemporaryCache") as Boolean)
+        assertFalse(call("isDownloadedCacheType", null) as Boolean)
+    }
+
+    @Test
     fun `json reader handles escapes, unicode and nesting`() {
         val value = json("""{"a":"line\n\"quoted\" Кино \/","b":[1,2.5,true,null],"c":{}}""")
             as Map<*, *>
