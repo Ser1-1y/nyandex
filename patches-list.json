@@ -1,6 +1,6 @@
 {
   "NOTE": "Do NOT manually edit this file. This file is automatically updated when semantic release (release.yml) runs. Manually editing this file can break your releases and break third party tools that use this file.",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "patches": [
     {
       "name": "Блокировать аналитику Плюса",
@@ -400,7 +400,7 @@
     },
     {
       "name": "Тексты песен из LRCLIB",
-      "description": "Тексты песен загружаются только из LRCLIB (lrclib.net), API текстов Яндекса не используется. Текст можно открыть у любого трека; текст следующего трека загружается заранее и сохраняется для офлайна. Если LRCLIB недоступен, появляется уведомление.",
+      "description": "Тексты песен загружаются только из LRCLIB (lrclib.net), API текстов Яндекса не используется. Текст можно открыть у любого трека; текст следующего трека и скачанных треков загружается заранее и сохраняется для офлайна. Если LRCLIB недоступен, появляется уведомление.",
       "default": true,
       "category": null,
       "compatiblePackages": [

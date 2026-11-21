@@ -1,3 +1,13 @@
+## [1.5.0](https://github.com/Ser1-1y/nyandex/compare/v1.4.0...v1.5.0) (2026-11-21)
+
+### ✨ New Features
+
+* download lyrics with tracks; Yandex-style settings page ([1dd5f62](https://github.com/Ser1-1y/nyandex/commit/1dd5f62744b06a21fbdcaff1c07a5c4481efed6a))
+
+### 🐛 Bug Fixes
+
+* address review findings for downloaded-track lyrics ([bbd9b9b](https://github.com/Ser1-1y/nyandex/commit/bbd9b9b6a0ec4aee65018793598d9fb242e0118e))
+
 ## [1.4.0](https://github.com/Ser1-1y/nyandex/compare/v1.3.0...v1.4.0) (2026-11-21)
 
 ### ✨ New Features
