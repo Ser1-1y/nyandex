@@ -1,3 +1,9 @@
+## [1.5.6](https://github.com/Ser1-1y/nyandex/compare/v1.5.5...v1.5.6) (2026-11-21)
+
+### 🐛 Bug Fixes
+
+* show the LRCLIB toast only when LRCLIB itself failed ([9302437](https://github.com/Ser1-1y/nyandex/commit/93024378d34ddb5e850da1c1d88e2fb14b41cd34))
+
 ## [1.5.5](https://github.com/Ser1-1y/nyandex/compare/v1.5.4...v1.5.5) (2026-11-21)
 
 ### 🐛 Bug Fixes
