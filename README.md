@@ -1,5 +1,11 @@
 # Nyandex
 
+> [!WARNING]
+> **Nyandex is fully vibe-coded.** All of it (the patches, the extensions, the tests, the release
+> setup and this README) was written by an AI coding agent, Claude Code. The maintainer directed
+> the work and tried the patched app, but no human wrote the code or reviewed it line by line.
+> Expect bugs, read the code before you trust it, and use it at your own risk.
+
 Yandex Music patches for [Morphe](https://morphe.software): lyrics from LRCLIB, a Material You
 theme, hideable bottom-bar tabs, an in-app settings page, and privacy fixes.
 
@@ -52,13 +58,6 @@ Morphe Manager compares the full version name, including the build suffix.
 - **Hidden tabs** disappear after restarting the app; the settings page offers a restart.
 
 Patch names and descriptions are in Russian.
-
-## AI usage
-
-Nyandex is fully vibe-coded. All of it (the patches, the extensions, the tests, the release setup
-and this README) was written by an AI coding agent, Claude Code. The maintainer directed the work
-and tried the patched app, but no human wrote the code or reviewed it line by line. Expect bugs,
-read the code before you trust it, and use it at your own risk.
 
 ## Building
 
