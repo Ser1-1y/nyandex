@@ -1,3 +1,9 @@
+## [1.3.0](https://github.com/Ser1-1y/nyandex/compare/v1.2.3...v1.3.0) (2026-11-21)
+
+### ✨ New Features
+
+* take lyrics only from LRCLIB ([#3](https://github.com/Ser1-1y/nyandex/issues/3)) ([165a898](https://github.com/Ser1-1y/nyandex/commit/165a898d81797c8bbec6d7a1f34aee2925521852))
+
 ## [1.2.3](https://github.com/Ser1-1y/nyandex/compare/v1.2.2...v1.2.3) (2026-11-21)
 
 ### 🐛 Bug Fixes
