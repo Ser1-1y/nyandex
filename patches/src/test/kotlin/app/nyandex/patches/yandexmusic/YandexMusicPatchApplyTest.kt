@@ -31,6 +31,7 @@ import com.android.tools.smali.dexlib2.iface.instruction.NarrowLiteralInstructio
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.WideLiteralInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.reference.StringReference
@@ -245,6 +246,7 @@ class YandexMusicPatchApplyTest {
         verifySettingsAndTabs(dexFiles, output)
         verifyMonetTheme(output)
         verifyWaveButtonColors(dexFiles)
+        verifyThemeLogoColor(dexFiles, output)
         verifyEntitlements(dexFiles)
         verifyBranchTargets(dexFiles)
     }
@@ -422,6 +424,32 @@ class YandexMusicPatchApplyTest {
             }
         }
         assertEquals(1, sites.size, "Expected one My Vibe agent mapper calling waveButtonColor")
+    }
+
+    private fun verifyThemeLogoColor(dexFiles: List<DexFile>, apk: File) {
+        val dump = aapt2("dump", "resources", apk.absolutePath)
+        fun color(name: String): Long =
+            Regex("""resource\s+0x([0-9a-f]+)\s+color/$name\s*\r?\n""").find(dump)
+                ?.groupValues?.get(1)?.toLong(16)
+                ?: throw AssertionError("Color $name not found in the patched resources")
+
+        // The Compose theme builder reads every themed color; it now reads icon_accent where the
+        // stock app reads icon_logo (the full player's play button and other accents).
+        val guards = listOf("button_primary_day", "button_primary_disabled_day", "bg_placeholder_day", "icon_accent_day")
+            .map(::color)
+        val builders = dexFiles.flatMap { it.classes }.flatMap { it.methods }.filter { method ->
+            val literals = method.implementation?.instructions
+                ?.mapNotNullTo(mutableSetOf()) { (it as? WideLiteralInstruction)?.wideLiteral }
+                ?: return@filter false
+            literals.containsAll(guards)
+        }
+        assertEquals(1, builders.size, "Expected one Compose theme color builder")
+        val literals = builders.single().implementation!!.instructions
+            .mapNotNull { (it as? WideLiteralInstruction)?.wideLiteral }
+        assertEquals(2, literals.count { it == color("icon_accent_day") }, "Theme logo color does not use icon_accent_day")
+        assertEquals(2, literals.count { it == color("icon_accent_night") }, "Theme logo color does not use icon_accent_night")
+        assertFalse(literals.contains(color("icon_logo_day")), "Theme still reads icon_logo_day")
+        assertFalse(literals.contains(color("icon_logo_night")), "Theme still reads icon_logo_night")
     }
 
     /** Resource id of a framework color, read from the SDK's android.jar. */
