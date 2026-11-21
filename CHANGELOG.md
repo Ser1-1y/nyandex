@@ -1,3 +1,9 @@
+## [1.4.0](https://github.com/Ser1-1y/nyandex/compare/v1.3.0...v1.4.0) (2026-11-21)
+
+### ✨ New Features
+
+* prefetch, cache and fuzzy-match LRCLIB lyrics; clean share links ([ae8b1e1](https://github.com/Ser1-1y/nyandex/commit/ae8b1e1fcac21c27f3c307496da3eacd2adb212d))
+
 ## [1.3.0](https://github.com/Ser1-1y/nyandex/compare/v1.2.3...v1.3.0) (2026-11-21)
 
 ### ✨ New Features
