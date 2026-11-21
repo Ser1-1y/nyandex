@@ -1,6 +1,6 @@
 {
   "NOTE": "Do NOT manually edit this file. This file is automatically updated when semantic release (release.yml) runs. Manually editing this file can break your releases and break third party tools that use this file.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "patches": [
     {
       "name": "Block Plus analytics",
@@ -445,6 +445,50 @@
     {
       "name": "Spoof app signature",
       "description": "Makes the app see its original Yandex signature, so Yandex ID login and other signature checks keep working after Morphe re-signs the APK. Required for login.",
+      "default": true,
+      "category": null,
+      "compatiblePackages": [
+        {
+          "packageName": "ru.yandex.music",
+          "name": "Yandex Music",
+          "description": null,
+          "apkFileType": "APK_REQUIRED",
+          "appIconColor": "#FFCC00",
+          "signatures": null,
+          "formFactor": "MOBILE",
+          "targets": [
+            {
+              "version": "2026.11.1 #171gpr",
+              "versionCodes": {
+                "ARM64_V8A": 24026561,
+                "ARMEABI_V7A": 24026561,
+                "X86_64": 24026561,
+                "X86": 24026561
+              },
+              "isExperimental": false,
+              "minSdk": 24,
+              "description": null
+            },
+            {
+              "version": "2026.11.2 #172.1gpr",
+              "versionCodes": {
+                "ARM64_V8A": 24026572,
+                "ARMEABI_V7A": 24026572,
+                "X86_64": 24026572,
+                "X86": 24026572
+              },
+              "isExperimental": false,
+              "minSdk": 32,
+              "description": null
+            }
+          ]
+        }
+      ],
+      "options": []
+    },
+    {
+      "name": "Unlock Yandex Plus",
+      "description": "Forces hasPlus, hasMusicSubscription, serviceAvailable and isChild in the music session and Passport profile DTOs. The server still sees the real account.",
       "default": true,
       "category": null,
       "compatiblePackages": [

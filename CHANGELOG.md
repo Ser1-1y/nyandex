@@ -1,3 +1,9 @@
+## [1.1.0](https://github.com/Ser1-1y/nyandex/compare/v1.0.0...v1.1.0) (2026-11-21)
+
+### ✨ New Features
+
+* add Yandex Plus entitlement patch ([72532fe](https://github.com/Ser1-1y/nyandex/commit/72532fe9acfbd218ded353d976269164621bf675))
+
 ## 1.0.0 (2026-11-21)
 
 ### ✨ New Features
