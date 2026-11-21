@@ -277,6 +277,42 @@ class LrcLibCoreTest {
         assertEquals(emptyMap<String, Any>(), value["c"])
     }
 
+    @Test
+    fun `retry after header is read in seconds only`() {
+        assertEquals(3000L, call("parseRetryAfterMs", "3"))
+        assertEquals(0L, call("parseRetryAfterMs", " 0 "))
+        assertEquals(-1L, call("parseRetryAfterMs", null))
+        assertEquals(-1L, call("parseRetryAfterMs", ""))
+        assertEquals(-1L, call("parseRetryAfterMs", "-1"))
+        assertEquals(-1L, call("parseRetryAfterMs", "Wed, 21 Oct 2026 07:28:00 GMT"))
+    }
+
+    @Test
+    fun `temporary failures are retried twice with a growing pause`() {
+        assertEquals(3, core.getField("MAX_ATTEMPTS").getInt(null))
+        listOf(0, 408, 429, 500, 502, 503, 504, 522, 524).forEach { status ->
+            assertEquals(1000L, call("retryDelayMs", 1, status, -1L), "status $status, attempt 1")
+            assertEquals(2000L, call("retryDelayMs", 2, status, -1L), "status $status, attempt 2")
+            assertEquals(-1L, call("retryDelayMs", 3, status, -1L), "status $status, attempt 3 is the last")
+        }
+    }
+
+    @Test
+    fun `permanent failures are not retried`() {
+        listOf(400, 401, 403, 405, 410, 418, 501, 505).forEach { status ->
+            assertEquals(-1L, call("retryDelayMs", 1, status, -1L), "status $status")
+        }
+    }
+
+    @Test
+    fun `retry after is honored`() {
+        assertEquals(3000L, call("retryDelayMs", 1, 429, 3000L))
+        assertEquals(5000L, call("retryDelayMs", 2, 503, 5000L))
+        assertEquals(0L, call("retryDelayMs", 1, 503, 0L))
+        assertEquals(-1L, call("retryDelayMs", 1, 429, 60_000L), "too long a pause is not waited for")
+        assertEquals(-1L, call("retryDelayMs", 3, 429, 1000L), "no attempt after the third")
+    }
+
     private fun compileCore(): Class<*> {
         val root = generateSequence(File("").absoluteFile) { it.parentFile }
             .first { File(it, "extensions/lrclib-lyrics").isDirectory }

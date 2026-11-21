@@ -58,7 +58,7 @@ import java.util.concurrent.TimeUnit;
 public final class LrcLibLyrics {
     private static final String TAG = "NyandexLrcLib";
     private static final String USER_AGENT =
-            "Nyandex/1.0 (Yandex Music lyrics from LRCLIB)";
+            "Nyandex/1.0 (Yandex Music lyrics from LRCLIB; https://github.com/Ser1-1y/nyandex)";
     private static final int CONNECT_TIMEOUT_MS = 4000;
     private static final int READ_TIMEOUT_MS = 5000;
     private static final int MAX_TRACKS = 4096;
@@ -103,8 +103,28 @@ public final class LrcLibLyrics {
     static final String KEEP_DOWNLOADED_KEY = "lyrics_keep_downloaded";
 
     /** LRCLIB could not be reached: network error or an HTTP status other than 200 and 404. */
-    private static final class UnreachableException extends IOException {
+    private static class UnreachableException extends IOException {
         UnreachableException(String message) {
+            super(message);
+        }
+    }
+
+    /** LRCLIB answered with an HTTP status other than 200 and 404. */
+    private static final class StatusException extends UnreachableException {
+        final int status;
+        /** The response's Retry-After in milliseconds, or -1. */
+        final long retryAfterMs;
+
+        StatusException(int status, long retryAfterMs, String url) {
+            super("HTTP " + status + " for " + url);
+            this.status = status;
+            this.retryAfterMs = retryAfterMs;
+        }
+    }
+
+    /** Not sent: LRCLIB's last Retry-After has not passed yet. */
+    private static final class WaitException extends UnreachableException {
+        WaitException(String message) {
             super(message);
         }
     }
@@ -179,6 +199,8 @@ public final class LrcLibLyrics {
     });
 
     private static volatile long lastToastAt;
+    /** No LRCLIB request before this time ({@link SystemClock#elapsedRealtime}): its last Retry-After. */
+    private static volatile long waitUntil;
     /** Until when downloaded tracks do not ask LRCLIB, after it could not be reached. */
     private static volatile long downloadBackoffUntil;
     private static volatile boolean reconcileScheduled;
@@ -877,10 +899,44 @@ public final class LrcLibLyrics {
     }
 
     /**
+     * One request, tried up to {@link LrcLibCore#MAX_ATTEMPTS} times after network errors and
+     * temporary HTTP errors ({@link LrcLibCore#retryDelayMs}). A Retry-After from LRCLIB is
+     * honored: the retry waits for it, and no request is sent before it has passed. Only the
+     * failure of the last attempt reaches the caller (and so the toast).
+     *
      * @return The response body for HTTP 200, null for 404 (no such lyrics).
      * @throws IOException If LRCLIB cannot be reached or answers with another status.
      */
     private static String get(String url) throws IOException {
+        for (int attempt = 1; ; attempt++) {
+            IOException failure;
+            long delay;
+            try {
+                return getOnce(url);
+            } catch (StatusException exception) {
+                failure = exception;
+                delay = LrcLibCore.retryDelayMs(attempt, exception.status, exception.retryAfterMs);
+            } catch (WaitException exception) {
+                throw exception;
+            } catch (IOException exception) {
+                failure = exception;
+                delay = LrcLibCore.retryDelayMs(attempt, 0, -1);
+            }
+            if (delay < 0) throw failure;
+            Log.i(TAG, "LRCLIB attempt " + attempt + " failed (" + failure + "), retrying in " + delay + " ms");
+            try {
+                Thread.sleep(delay);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw failure;
+            }
+        }
+    }
+
+    private static String getOnce(String url) throws IOException {
+        long wait = waitUntil - SystemClock.elapsedRealtime();
+        if (wait > 0) throw new WaitException("LRCLIB asked to wait " + wait + " ms more");
+
         HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
         try {
             connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
@@ -891,7 +947,9 @@ public final class LrcLibLyrics {
             int status = connection.getResponseCode();
             if (status == HttpURLConnection.HTTP_NOT_FOUND) return null;
             if (status != HttpURLConnection.HTTP_OK) {
-                throw new UnreachableException("HTTP " + status + " for " + url);
+                long retryAfterMs = LrcLibCore.parseRetryAfterMs(connection.getHeaderField("Retry-After"));
+                if (retryAfterMs > 0) waitUntil = SystemClock.elapsedRealtime() + retryAfterMs;
+                throw new StatusException(status, retryAfterMs, url);
             }
             try (InputStream input = connection.getInputStream()) {
                 return readAll(input);

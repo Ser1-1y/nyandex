@@ -239,6 +239,56 @@ public final class LrcLibCore {
 
     // endregion
 
+    // region Retries
+
+    /** Attempts per request: the first one and two retries. */
+    public static final int MAX_ATTEMPTS = 3;
+    /**
+     * Pause before the first retry when LRCLIB gave no Retry-After; it doubles for each
+     * further retry (1 s, then 2 s).
+     */
+    static final long RETRY_DELAY_MS = 1000;
+    /** Longest Retry-After waited for; LRCLIB asking for a longer pause is not retried. */
+    static final long MAX_RETRY_AFTER_MS = 5000;
+
+    /**
+     * A Retry-After header in milliseconds. Only the delay-seconds form is read; an HTTP date
+     * or a malformed value gives -1, as does a missing header.
+     */
+    public static long parseRetryAfterMs(String header) {
+        if (header == null) return -1;
+        String value = header.trim();
+        if (value.isEmpty() || value.length() > 9) return -1;
+        for (int i = 0; i < value.length(); i++) {
+            if (value.charAt(i) < '0' || value.charAt(i) > '9') return -1;
+        }
+        return Long.parseLong(value) * 1000;
+    }
+
+    /**
+     * How long to wait before retrying a failed request, or -1 to not retry.
+     *
+     * Network errors (status 0), 408, 429 and temporary server errors (5xx, including
+     * Cloudflare's 52x, but not 501/505) are retried until {@link #MAX_ATTEMPTS} attempts were
+     * made. Other statuses mean the request itself is wrong and would fail again. LRCLIB's
+     * Retry-After is honored: the retry waits that long, and a pause longer than
+     * {@link #MAX_RETRY_AFTER_MS} is not retried at all.
+     *
+     * @param attempt      The attempt that just failed, from 1.
+     * @param status       The HTTP status, or 0 when no response arrived.
+     * @param retryAfterMs {@link #parseRetryAfterMs} of the response, or -1.
+     */
+    public static long retryDelayMs(int attempt, int status, long retryAfterMs) {
+        if (attempt < 1 || attempt >= MAX_ATTEMPTS) return -1;
+        boolean temporary = status <= 0 || status == 408 || status == 429
+                || (status >= 500 && status <= 599 && status != 501 && status != 505);
+        if (!temporary) return -1;
+        if (retryAfterMs < 0) return RETRY_DELAY_MS << (attempt - 1);
+        return retryAfterMs <= MAX_RETRY_AFTER_MS ? retryAfterMs : -1;
+    }
+
+    // endregion
+
     // region Lyrics selection
 
     /**
