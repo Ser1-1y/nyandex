@@ -1,6 +1,6 @@
 {
   "NOTE": "Do NOT manually edit this file. This file is automatically updated when semantic release (release.yml) runs. Manually editing this file can break your releases and break third party tools that use this file.",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "patches": [
     {
       "name": "Блокировать аналитику Плюса",
@@ -444,7 +444,7 @@
     },
     {
       "name": "Тема Monet",
-      "description": "Окрашивает карточки, акценты, основную кнопку и кнопки «Моей волны» в цвета обоев Android 12+ (Material You); фон страниц остаётся чёрным. Настройка «Светлая / Тёмная / Системная» продолжает работать. На старых версиях Android цвета остаются стандартными.",
+      "description": "Окрашивает карточки, акценты, основную кнопку, кнопку воспроизведения в плеере и кнопки «Моей волны» в цвета обоев Android 12+ (Material You); фон страниц остаётся чёрным. Настройка «Светлая / Тёмная / Системная» продолжает работать. На старых версиях Android цвета остаются стандартными.",
       "default": false,
       "category": null,
       "compatiblePackages": [
