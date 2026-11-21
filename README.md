@@ -49,10 +49,11 @@ Morphe Manager compares the full version name, including the build suffix.
 
 ## Notes
 
-- **Lyrics** come from LRCLIB, a free community database; they are fetched only when Yandex sends
-  its Plus notice, with the track's artist, title and duration (nothing else). LRCLIB lyrics are
-  community-contributed and may be copyrighted; the fallback is meant for personal use. Tracks
-  missing on LRCLIB keep the Yandex notice.
+- **Lyrics** come only from LRCLIB, a free community database; Yandex's lyrics API is not used
+  (no lyrics requests and no lyric view reports). Every track offers lyrics; LRCLIB receives the
+  track's artist, title and duration (nothing else). Tracks LRCLIB has no lyrics for show the
+  app's lyrics error, and a toast appears when LRCLIB cannot be reached. LRCLIB lyrics are
+  community-contributed and may be copyrighted; the patch is meant for personal use.
 - **Monet** is applied through Android 12+ dynamic colors. On older Android versions the app keeps
   its stock colors.
 - **Hidden tabs** disappear after restarting the app; the settings page offers a restart.

@@ -9,31 +9,24 @@ package app.nyandex.patches.yandexmusic.misc.lyrics
 
 import app.morphe.patcher.StringComparisonType
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
-import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLabels
-import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
 import app.morphe.patcher.patch.PatchException
+import app.morphe.patcher.patch.classDefBy
 import app.morphe.patcher.patch.classDefByStrings
 import app.morphe.patcher.patch.mutableClassDefBy
 import app.morphe.patcher.patch.patch
 import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod
 import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod.Companion.toMutable
-import app.morphe.patcher.util.smali.ExternalLabel
 import app.nyandex.patches.yandexmusic.shared.Constants.COMPATIBILITY_YANDEX_MUSIC
 import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.builder.MutableMethodImplementation
 import com.android.tools.smali.dexlib2.iface.ClassDef
 import com.android.tools.smali.dexlib2.iface.Method
-import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.Instruction
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
-import com.android.tools.smali.dexlib2.iface.instruction.RegisterRangeInstruction
-import com.android.tools.smali.dexlib2.iface.instruction.ThreeRegisterInstruction
-import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
-import com.android.tools.smali.dexlib2.iface.reference.TypeReference
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethod
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethodParameter
 import java.util.logging.Logger
@@ -43,13 +36,15 @@ private val logger = Logger.getLogger("YandexMusicLyricsFallback")
 internal const val LRCLIB_EXTENSION =
     "Lapp/nyandex/extension/yandexmusic/lyrics/LrcLibLyrics;"
 internal const val REMEMBER_TRACK_METHOD = "nyandexRememberLyricsTrack"
-internal const val FALLBACK_METHOD = "nyandexLrcLibFallback"
+internal const val LRCLIB_METHOD = "nyandexLrcLibLyrics"
 
 /** Signing key of the lyrics request. Only the lyrics repository contains it. */
 private const val LYRICS_SIGN_KEY = "p93jhgh689SBReK6ghtw62"
 private const val TRACK_TO_STRING = "Track{id='"
 private const val LYRICS_HTTP_API = "Lcom/yandex/music/shared/lyrics/LyricsHttpApi;"
 private const val FILES_API = "Lcom/yandex/music/shared/lyrics/FilesApi;"
+private const val KOTLIN_UNIT = "Lkotlin/Unit;"
+private const val PARCELABLE = "Landroid/os/Parcelable;"
 
 private const val STRING = "Ljava/lang/String;"
 private const val OBJECT = "Ljava/lang/Object;"
@@ -58,8 +53,8 @@ private const val ARRAY_LIST = "Ljava/util/ArrayList;"
 
 val lyricsFallbackPatch = patch(
     name = "Тексты песен из LRCLIB",
-    description = "Загружает текст песни из LRCLIB (lrclib.net), когда Яндекс вместо текста присылает " +
-        "предложение оформить Плюс. Настоящие тексты Яндекса и ошибки не трогаются.",
+    description = "Тексты песен загружаются только из LRCLIB (lrclib.net), API текстов Яндекса не используется. " +
+        "Текст можно открыть у любого трека; если LRCLIB недоступен, появляется уведомление.",
 ) {
     compatibleWith(COMPATIBILITY_YANDEX_MUSIC)
 
@@ -78,6 +73,11 @@ val lyricsFallbackPatch = patch(
  *
  * Track model (`b0x` in 2026.11.2, `oqv` in 2026.11.1): `a` id, `c` title, `e` duration in
  * milliseconds, `f` artists (their `toString()` returns the artist name).
+ *
+ * The same helper marks every track as having text and synced lyrics. The track's lyrics
+ * availability (`jqv` in 2026.11.1: two booleans from the server's `lyricsInfo`) decides whether
+ * the player offers lyrics at all and in which format; with both set the app asks for LRC, and
+ * LRCLIB answers for tracks Yandex has no lyrics for too.
  */
 private fun hookTrackConstructor() {
     val trackClass = classDefByStrings(TRACK_TO_STRING, StringComparisonType.EQUALS)
@@ -89,6 +89,19 @@ private fun hookTrackConstructor() {
     trackClass.requireField("c", STRING)
     trackClass.requireField("e", "J")
     trackClass.requireField("f", LIST)
+
+    // The lyrics availability: a Parcelable with exactly two boolean fields and a (ZZ) constructor.
+    val availability = trackClass.fields.filter { field ->
+        !AccessFlags.STATIC.isSet(field.accessFlags) && field.type.startsWith("L") &&
+            !field.type.startsWith("Ljava/") && !field.type.startsWith("Landroid/")
+    }.mapNotNull { field ->
+        val classDef = runCatching { classDefBy(field.type) }.getOrNull() ?: return@mapNotNull null
+        val instanceFields = classDef.fields.filter { !AccessFlags.STATIC.isSet(it.accessFlags) }
+        val isAvailability = classDef.interfaces.contains(PARCELABLE) &&
+            instanceFields.size == 2 && instanceFields.all { it.type == "Z" } &&
+            classDef.methods.any { it.name == "<init>" && it.parameterTypes.map(Any::toString) == listOf("Z", "Z") }
+        field.takeIf { isAvailability }
+    }.singleOrNull() ?: throw PatchException("Track lyrics availability field was not found")
 
     val mutableTrack = mutableClassDefBy(type)
     val constructor = mutableTrack.methods.singleOrNull { method ->
@@ -124,6 +137,10 @@ private fun hookTrackConstructor() {
             iget-wide v2, p0, $type->e:J
             iget-object v4, p0, $type->f:$LIST
             invoke-static/range {v0 .. v4}, $LRCLIB_EXTENSION->rememberTrack($STRING${STRING}J$LIST)V
+            new-instance v0, ${availability.type}
+            const/4 v1, 0x1
+            invoke-direct {v0, v1, v1}, ${availability.type}-><init>(ZZ)V
+            iput-object v0, p0, $type->${availability.name}:${availability.type}
             return-void
         """,
     )
@@ -143,21 +160,19 @@ private fun hookTrackConstructor() {
             "invoke-static/range {p0 .. p0}, $type->$REMEMBER_TRACK_METHOD($type)V",
         )
     }
-    logger.info("Hooked track model $type (${returns.size} return(s))")
+    logger.info("Hooked track model $type (${returns.size} return(s), lyrics availability ${availability.name})")
 }
 
 /**
- * Yandex does not refuse lyrics to accounts without Plus with an error. The lyrics request
- * succeeds, and the downloaded lyrics file is a one-line notice («Подключите подписку на Плюс,
- * чтобы видеть тексты песен») that the app shows as the lyrics.
+ * Lyrics come only from LRCLIB. The lyrics repository (`h8j` in 2026.11.2, `yli` in 2026.11.1)
+ * downloads lyrics in a suspend method `a(trackId, format, durationMs, continuation)`: it asks
+ * the Yandex API for a signed download link, downloads the file and parses it with
+ * `parser(trackInfo, info, format, content)`. The method now returns right away with the result
+ * of a new static helper, so the Yandex lyrics API is never called. The helper builds the lyrics
+ * from LRCLIB content with the app's own classes and parser, or returns the app's HTTP error
+ * result (404) when LRCLIB has no lyrics or cannot be reached.
  *
- * In the lyrics repository (`h8j.a` in 2026.11.2, `yli.a` in 2026.11.1) the downloaded text is
- * parsed once, right before the method returns: `parser(trackInfo, info, format, content)`.
- * Right before that call the track id, format, download info and text are handed to a new
- * static helper. The extension returns LRCLIB lyrics only when the text is the Plus notice; the
- * helper then builds the lyrics with the app's own classes and the method returns them. For
- * every other text the helper returns null and the original parse runs unchanged. Error
- * results never reach this point.
+ * The repository's lyric view report (`POST lyric-views`) is turned into a no-op that succeeds.
  */
 private fun hookLyricsRepository() {
     val repository = classDefByStrings(LYRICS_SIGN_KEY).singleOrNull { candidate ->
@@ -173,18 +188,18 @@ private fun hookLyricsRepository() {
             candidate.references(LYRICS_HTTP_API, "a") &&
             candidate.references(FILES_API, "a")
     } ?: throw PatchException("Lyrics download method was not found")
+    if (AccessFlags.STATIC.isSet(method.accessFlags)) throw PatchException("Lyrics download method is static")
     val instructions = method.instructionsList()
+    val methodReferences = instructions.mapNotNull { it.methodReference() }.distinct()
 
     // parser(trackInfo, downloadInfo, format, content) -> lyrics, called once at the end.
-    val parser = instructions.mapNotNull { it.methodReference() }
-        .distinct()
-        .singleOrNull { reference ->
-            reference.parameterTypes.size == 4 &&
-                reference.parameterTypes[3].toString() == STRING &&
-                reference.parameterTypes.take(3).all { it.toString().startsWith("L") } &&
-                reference.returnType.startsWith("L") &&
-                reference.returnType != OBJECT
-        } ?: throw PatchException("Lyrics parser call was not found")
+    val parser = methodReferences.singleOrNull { reference ->
+        reference.parameterTypes.size == 4 &&
+            reference.parameterTypes[3].toString() == STRING &&
+            reference.parameterTypes.take(3).all { it.toString().startsWith("L") } &&
+            reference.returnType.startsWith("L") &&
+            reference.returnType != OBJECT
+    } ?: throw PatchException("Lyrics parser call was not found")
     val trackInfoType = parser.parameterTypes[0].toString()
     val infoType = parser.parameterTypes[1].toString()
     val formatType = parser.parameterTypes[2].toString()
@@ -194,12 +209,20 @@ private fun hookLyricsRepository() {
     }
 
     // The success wrapper is the only class built with a single Object argument.
-    val successType = instructions.mapNotNull { it.methodReference() }
+    val successType = methodReferences
         .filter { it.name == "<init>" && it.parameterTypes.map(Any::toString) == listOf(OBJECT) }
         .map { it.definingClass }
         .distinct()
         .singleOrNull()
         ?: throw PatchException("Lyrics success result type was not found")
+
+    // The HTTP error result: (code, message, url).
+    val httpErrorType = methodReferences
+        .filter { it.name == "<init>" && it.parameterTypes.map(Any::toString) == listOf("I", STRING, STRING) }
+        .map { it.definingClass }
+        .distinct()
+        .singleOrNull()
+        ?: throw PatchException("Lyrics HTTP error result type was not found")
 
     val infoClass = mutableClassDefBy(infoType)
     val infoConstructor = infoClass.methods.singleOrNull { it.name == "<init>" }
@@ -226,51 +249,15 @@ private fun hookLyricsRepository() {
         candidate.name == "valueOf" && candidate.parameterTypes.map(Any::toString) == listOf(STRING)
     } ?: throw PatchException("$formatType.valueOf(String) was not found")
 
-    // Final parse: `new-instance vT, trackInfo`, `invoke-direct {vT, vId, ...}`, then
-    // `invoke-static {vT, vInfo, vFormat, vContent}, parser`. vT is written by the new-instance,
-    // so it is free right before it.
-    val parserIndex = instructions.indexOfFirst { it.methodReference() == parser }
-    val parserCall = instructions[parserIndex] as FiveRegisterInstruction
-    val trackInfoRegister = parserCall.registerC
-    val infoRegister = parserCall.registerD
-    val formatRegister = parserCall.registerE
-    val contentRegister = parserCall.registerF
-
-    val newTrackInfoIndex = (parserIndex - 1 downTo 0).firstOrNull { index ->
-        val instruction = instructions[index]
-        instruction.opcode == Opcode.NEW_INSTANCE &&
-            (instruction as OneRegisterInstruction).registerA == trackInfoRegister &&
-            ((instruction as ReferenceInstruction).reference as TypeReference).type == trackInfoType
-    } ?: throw PatchException("Track info construction before the parser was not found")
-    val trackInfoInit = instructions.subList(newTrackInfoIndex, parserIndex)
-        .singleOrNull { it.methodReference()?.let { r -> r.definingClass == trackInfoType && r.name == "<init>" } == true }
-        as? FiveRegisterInstruction
-        ?: throw PatchException("Track info constructor call was not found")
-    val trackIdRegister = trackInfoInit.registerD
-
-    val previous = instructions[newTrackInfoIndex - 1]
-    if (previous.opcode != Opcode.CHECK_CAST ||
-        (previous as OneRegisterInstruction).registerA != contentRegister ||
-        ((previous as ReferenceInstruction).reference as TypeReference).type != STRING
-    ) {
-        throw PatchException("Downloaded lyrics are not cast to String right before the parser")
-    }
-
-    val callRegisters = listOf(trackIdRegister, formatRegister, infoRegister, contentRegister)
-    if (callRegisters.any { it > 15 } || trackInfoRegister in callRegisters) {
-        throw PatchException("Unexpected parser registers: v$trackInfoRegister, $callRegisters")
-    }
-
-    // The helper builds the lyrics with the app's own classes from LRCLIB content.
+    // nyandexLrcLibLyrics(trackId, format): LRCLIB lyrics parsed by the app, or a 404 error result.
+    // 17 registers, p0 = v15 and p1 = v16, so the extension call uses the range form.
     val repositoryType = repository.type
     val helper = ImmutableMethod(
         repositoryType,
-        FALLBACK_METHOD,
+        LRCLIB_METHOD,
         listOf(
             ImmutableMethodParameter(STRING, null, null),
             ImmutableMethodParameter(formatType, null, null),
-            ImmutableMethodParameter(infoType, null, null),
-            ImmutableMethodParameter(STRING, null, null),
         ),
         OBJECT,
         AccessFlags.PUBLIC.value or AccessFlags.STATIC.value,
@@ -282,7 +269,7 @@ private fun hookLyricsRepository() {
         0,
         """
             :try_start
-            invoke-static/range {p0 .. p3}, $LRCLIB_EXTENSION->replacePaywall($STRING$OBJECT$OBJECT$STRING)[$STRING
+            invoke-static/range {p0 .. p1}, $LRCLIB_EXTENSION->lyrics($STRING$OBJECT)[$STRING
             move-result-object v0
             if-eqz v0, :none
             const/4 v1, 0x0
@@ -314,28 +301,57 @@ private fun hookLyricsRepository() {
             .catch Ljava/lang/Throwable; {:try_start .. :try_end} :failed
             :failed
             :none
-            const/4 v0, 0x0
+            new-instance v0, $httpErrorType
+            const/16 v1, 0x194
+            const-string v2, "LRCLIB"
+            invoke-direct {v0, v1, v2, v2}, $httpErrorType-><init>(I$STRING$STRING)V
             return-object v0
         """,
     )
     mutableRepository.methods.add(helper)
 
-    val scratch = "v$trackInfoRegister"
-    method.addInstructionsWithLabels(
-        newTrackInfoIndex,
+    // The download method returns the helper's result before any of its own code runs.
+    // p1 (track id) and p2 (format) are adjacent; the method is an instance method.
+    method.addInstructions(
+        0,
         """
-            invoke-static {v$trackIdRegister, v$formatRegister, v$infoRegister, v$contentRegister}, $repositoryType->$FALLBACK_METHOD($STRING$formatType$infoType$STRING)$OBJECT
-            move-result-object $scratch
-            if-eqz $scratch, :original
-            return-object $scratch
+            invoke-static/range {p1 .. p2}, $repositoryType->$LRCLIB_METHOD($STRING$formatType)$OBJECT
+            move-result-object v0
+            return-object v0
         """,
-        ExternalLabel("original", method.getInstruction(newTrackInfoIndex)),
+    )
+
+    // Lyric view report: succeed with Unit without sending anything. Its request body
+    // (LyricsViewsBodyRequestDto) is the only single-argument API call that does not take a String;
+    // 2026.11.2 obfuscates the body class name.
+    val views = mutableRepository.methods.singleOrNull { candidate ->
+        candidate.returnType == OBJECT && candidate.instructionsList().any { instruction ->
+            val reference = instruction.methodReference()
+            reference?.definingClass == LYRICS_HTTP_API &&
+                reference.parameterTypes.size == 1 && reference.parameterTypes[0].toString() != STRING
+        }
+    } ?: throw PatchException("Lyric views report method was not found")
+    val unit = views.instructionsList().firstNotNullOfOrNull { instruction ->
+        ((instruction as? ReferenceInstruction)?.reference as? FieldReference)
+            ?.takeIf { instruction.opcode == Opcode.SGET_OBJECT && it.type == KOTLIN_UNIT }
+    } ?: throw PatchException("Unit instance was not found in the lyric views report")
+    if (views.implementation!!.registerCount - views.parameterTypes.size - 1 < 2) {
+        throw PatchException("Lyric views report has too few registers")
+    }
+    views.addInstructions(
+        0,
+        """
+            sget-object v0, ${unit.definingClass}->${unit.name}:$KOTLIN_UNIT
+            new-instance v1, $successType
+            invoke-direct {v1, v0}, $successType-><init>($OBJECT)V
+            return-object v1
+        """,
     )
 
     logger.info(
-        "Hooked lyrics repository $repositoryType.${method.name} " +
+        "Lyrics repository $repositoryType: ${method.name} uses LRCLIB only, ${views.name} report disabled " +
             "(parser ${parser.definingClass}.${parser.name}, info $infoType, format $formatType, " +
-            "success $successType)",
+            "success $successType, http error $httpErrorType)",
     )
 }
 

@@ -7,10 +7,15 @@
 
 package app.nyandex.extension.yandexmusic.lyrics;
 
+import android.content.Context;
+import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.Log;
+import android.widget.Toast;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -21,23 +26,31 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Called from the patched app.
+ * Called from the patched app. Lyrics come only from LRCLIB; the app's own lyrics API is not used.
  *
  * {@link #rememberTrack} runs at the end of the track model constructor and keeps the metadata
- * LRCLIB needs (the lyrics repository only receives the track id). {@link #replacePaywall} runs
- * right before the app parses downloaded lyrics and replaces only Yandex's Plus notice («Подключите
- * подписку на Плюс, чтобы видеть тексты песен»), which accounts without Plus receive instead of
- * the lyrics. Real lyrics and errors are left to the app.
+ * LRCLIB needs (the lyrics repository only receives the track id). {@link #lyrics} replaces the
+ * lyrics repository's download: it returns LRCLIB lyrics, or null when LRCLIB has none or cannot
+ * be reached. Only an unreachable LRCLIB is shown to the user, as a toast.
  */
 @SuppressWarnings("unused")
 public final class LrcLibLyrics {
     private static final String TAG = "NyandexLrcLib";
     private static final String USER_AGENT =
-            "Nyandex/1.0 (Yandex Music lyrics fallback)";
+            "Nyandex/1.0 (Yandex Music lyrics from LRCLIB)";
     private static final int CONNECT_TIMEOUT_MS = 4000;
     private static final int READ_TIMEOUT_MS = 5000;
     private static final int MAX_TRACKS = 512;
     private static final String[] NOT_FOUND = new String[0];
+    private static final long TOAST_INTERVAL_MS = 30_000;
+    private static final String UNREACHABLE_MESSAGE = "Не удалось подключиться к LRCLIB";
+
+    /** LRCLIB could not be reached: network error or an HTTP status other than 200 and 404. */
+    private static final class UnreachableException extends IOException {
+        UnreachableException(String message) {
+            super(message);
+        }
+    }
 
     private static final class Track {
         final String title;
@@ -58,7 +71,10 @@ public final class LrcLibLyrics {
         }
     };
 
+    /** Answers per track and format, including "no lyrics"; an unreachable LRCLIB is not cached. */
     private static final Map<String, String[]> CACHE = new ConcurrentHashMap<>();
+
+    private static volatile long lastToastAt;
 
     private LrcLibLyrics() {
     }
@@ -75,23 +91,16 @@ public final class LrcLibLyrics {
     }
 
     /**
-     * Called right before the app parses downloaded lyrics.
+     * Replaces the app's lyrics download.
      *
      * @param trackId Track id passed to the lyrics repository.
      * @param format  The app's requested lyrics format enum (TEXT, LRC, RICH_JSON).
-     * @param info    The app's lyrics download info (unused; it holds a signed download URL).
-     * @param content The downloaded lyrics text.
-     * @return {formatName, content} with LRCLIB lyrics if {@code content} is the Plus notice,
-     * otherwise null so the app parses its own lyrics unchanged.
+     * @return {formatName, content}, or null if LRCLIB has no lyrics or cannot be reached.
      */
-    public static String[] replacePaywall(String trackId, Object format, Object info, String content) {
+    public static String[] lyrics(String trackId, Object format) {
         try {
-            if (!LrcLibCore.isPaywallText(content)) return null;
-
-            String requested = format instanceof Enum ? ((Enum<?>) format).name() : String.valueOf(format);
-            Log.i(TAG, "Plus notice instead of lyrics for track " + trackId + " (" + requested + "): "
-                    + content.replace('\n', ' '));
             if (trackId == null) return null;
+            String requested = format instanceof Enum ? ((Enum<?>) format).name() : String.valueOf(format);
 
             String cacheKey = trackId + '|' + requested;
             String[] cached = CACHE.get(cacheKey);
@@ -118,19 +127,47 @@ public final class LrcLibLyrics {
                 return null;
             }
 
-            String[] lyrics = query(track, requested);
+            String[] lyrics;
+            try {
+                lyrics = query(track, requested);
+            } catch (IOException exception) {
+                Log.w(TAG, "LRCLIB unreachable for " + track.title + ": " + exception);
+                toastUnreachable();
+                return null;
+            }
             CACHE.put(cacheKey, lyrics == null ? NOT_FOUND : lyrics);
             Log.i(TAG, lyrics == null
                     ? "LRCLIB has no lyrics for " + track.title
                     : "Using LRCLIB " + lyrics[0] + " lyrics for " + track.title);
             return lyrics;
         } catch (Throwable throwable) {
-            Log.e(TAG, "LRCLIB fallback failed", throwable);
+            Log.e(TAG, "LRCLIB lookup failed", throwable);
             return null;
         }
     }
 
-    private static String[] query(Track track, String requested) throws Exception {
+    /** At most one toast per {@link #TOAST_INTERVAL_MS}: the app retries failed lyrics loads. */
+    private static void toastUnreachable() {
+        try {
+            long now = SystemClock.elapsedRealtime();
+            if (lastToastAt != 0 && now - lastToastAt < TOAST_INTERVAL_MS) return;
+            lastToastAt = now;
+
+            final Context context = (Context) Class.forName("android.app.ActivityThread")
+                    .getMethod("currentApplication")
+                    .invoke(null);
+            if (context == null) return;
+            new Handler(Looper.getMainLooper()).post(() -> {
+                try {
+                    Toast.makeText(context, UNREACHABLE_MESSAGE, Toast.LENGTH_SHORT).show();
+                } catch (Throwable ignored) {
+                }
+            });
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static String[] query(Track track, String requested) throws IOException {
         List<String> artists = new ArrayList<>();
         if (track.artists != null) {
             for (Object artist : track.artists) {
@@ -161,8 +198,11 @@ public final class LrcLibLyrics {
         return LrcLibCore.chooseLyrics(best, requested);
     }
 
-    /** @return The response body for HTTP 200, null for 404 and other statuses. */
-    private static String get(String url) throws Exception {
+    /**
+     * @return The response body for HTTP 200, null for 404 (no such lyrics).
+     * @throws IOException If LRCLIB cannot be reached or answers with another status.
+     */
+    private static String get(String url) throws IOException {
         HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
         try {
             connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
@@ -171,9 +211,9 @@ public final class LrcLibLyrics {
             connection.setRequestProperty("Lrclib-Client", USER_AGENT);
             connection.setRequestProperty("Accept", "application/json");
             int status = connection.getResponseCode();
+            if (status == HttpURLConnection.HTTP_NOT_FOUND) return null;
             if (status != HttpURLConnection.HTTP_OK) {
-                Log.i(TAG, "LRCLIB HTTP " + status + " for " + url);
-                return null;
+                throw new UnreachableException("HTTP " + status + " for " + url);
             }
             try (InputStream input = connection.getInputStream()) {
                 ByteArrayOutputStream output = new ByteArrayOutputStream();
