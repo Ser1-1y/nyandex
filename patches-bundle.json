@@ -1,8 +1,8 @@
 {
-  "created_at": "2026-11-21T04:40:41",
-  "description": "## [1.5.0](https://github.com/Ser1-1y/nyandex/compare/v1.4.0...v1.5.0) (2026-11-21)\n\n### ✨ New Features\n\n* download lyrics with tracks; Yandex-style settings page ([1dd5f62](https://github.com/Ser1-1y/nyandex/commit/1dd5f62744b06a21fbdcaff1c07a5c4481efed6a))\n\n### 🐛 Bug Fixes\n\n* address review findings for downloaded-track lyrics ([bbd9b9b](https://github.com/Ser1-1y/nyandex/commit/bbd9b9b6a0ec4aee65018793598d9fb242e0118e))",
-  "download_url": "https://github.com/Ser1-1y/nyandex/releases/download/v1.5.0/patches-1.5.0.mpp",
+  "created_at": "2026-11-21T04:48:40",
+  "description": "## [1.5.1](https://github.com/Ser1-1y/nyandex/compare/v1.5.0...v1.5.1) (2026-11-21)\n\n### 🐛 Bug Fixes\n\n* draw the settings switches like the app's ([ada72d1](https://github.com/Ser1-1y/nyandex/commit/ada72d1b54eeab4011433aa6ae6c8cdb04b69b34))",
+  "download_url": "https://github.com/Ser1-1y/nyandex/releases/download/v1.5.1/patches-1.5.1.mpp",
   "signature_download_url": "",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "public_key": "bHYC5dGZH1n9TJJeU6+FO3/E31TKayvIUQxiOBis3TM="
 }

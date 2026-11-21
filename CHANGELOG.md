@@ -1,3 +1,9 @@
+## [1.5.1](https://github.com/Ser1-1y/nyandex/compare/v1.5.0...v1.5.1) (2026-11-21)
+
+### 🐛 Bug Fixes
+
+* draw the settings switches like the app's ([ada72d1](https://github.com/Ser1-1y/nyandex/commit/ada72d1b54eeab4011433aa6ae6c8cdb04b69b34))
+
 ## [1.5.0](https://github.com/Ser1-1y/nyandex/compare/v1.4.0...v1.5.0) (2026-11-21)
 
 ### ✨ New Features
