@@ -1,8 +1,8 @@
 {
-  "created_at": "2026-11-21T02:34:34",
-  "description": "## [1.2.1](https://github.com/Ser1-1y/nyandex/compare/v1.2.0...v1.2.1) (2026-11-21)\n\n### 🐛 Bug Fixes\n\n* accept split APK bundles for Yandex Music ([74dc0a8](https://github.com/Ser1-1y/nyandex/commit/74dc0a8767dd50698b9b803819fcd6542f96d7de))",
-  "download_url": "https://github.com/Ser1-1y/nyandex/releases/download/v1.2.1/patches-1.2.1.mpp",
+  "created_at": "2026-11-21T03:08:56",
+  "description": "## [1.2.2](https://github.com/Ser1-1y/nyandex/compare/v1.2.1...v1.2.2) (2026-11-21)\n\n### 🐛 Bug Fixes\n\n* stop redeclaring the shared Yandex READ_CREDENTIALS permission ([#1](https://github.com/Ser1-1y/nyandex/issues/1)) ([606ea97](https://github.com/Ser1-1y/nyandex/commit/606ea973fb90e7ee0f71ada3a55b354ec9fe485b))",
+  "download_url": "https://github.com/Ser1-1y/nyandex/releases/download/v1.2.2/patches-1.2.2.mpp",
   "signature_download_url": "",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "public_key": "bHYC5dGZH1n9TJJeU6+FO3/E31TKayvIUQxiOBis3TM="
 }

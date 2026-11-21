@@ -1,3 +1,9 @@
+## [1.2.2](https://github.com/Ser1-1y/nyandex/compare/v1.2.1...v1.2.2) (2026-11-21)
+
+### 🐛 Bug Fixes
+
+* stop redeclaring the shared Yandex READ_CREDENTIALS permission ([#1](https://github.com/Ser1-1y/nyandex/issues/1)) ([606ea97](https://github.com/Ser1-1y/nyandex/commit/606ea973fb90e7ee0f71ada3a55b354ec9fe485b))
+
 ## [1.2.1](https://github.com/Ser1-1y/nyandex/compare/v1.2.0...v1.2.1) (2026-11-21)
 
 ### 🐛 Bug Fixes
