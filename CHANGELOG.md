@@ -1,3 +1,9 @@
+## [1.6.0](https://github.com/Ser1-1y/nyandex/compare/v1.5.6...v1.6.0) (2026-11-21)
+
+### ✨ New Features
+
+* add haptic feedback patch and widen the bottom bar tab touch area ([07b3ed0](https://github.com/Ser1-1y/nyandex/commit/07b3ed0671fab27f3c042718088205205e71fc4f))
+
 ## [1.5.6](https://github.com/Ser1-1y/nyandex/compare/v1.5.5...v1.5.6) (2026-11-21)
 
 ### 🐛 Bug Fixes
