@@ -12,6 +12,7 @@ import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.patch.classDefBy
 import app.morphe.patcher.patch.classDefByStrings
+import app.morphe.patcher.patch.classDefForEach
 import app.morphe.patcher.patch.mutableClassDefBy
 import app.morphe.patcher.patch.patch
 import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod
@@ -37,6 +38,7 @@ internal const val LRCLIB_EXTENSION =
     "Lapp/nyandex/extension/yandexmusic/lyrics/LrcLibLyrics;"
 internal const val REMEMBER_TRACK_METHOD = "nyandexRememberLyricsTrack"
 internal const val LRCLIB_METHOD = "nyandexLrcLibLyrics"
+internal const val PREFETCH_NEXT_METHOD = "nyandexPrefetchNextLyrics"
 
 /** Signing key of the lyrics request. Only the lyrics repository contains it. */
 private const val LYRICS_SIGN_KEY = "p93jhgh689SBReK6ghtw62"
@@ -54,15 +56,17 @@ private const val ARRAY_LIST = "Ljava/util/ArrayList;"
 val lyricsFallbackPatch = patch(
     name = "Тексты песен из LRCLIB",
     description = "Тексты песен загружаются только из LRCLIB (lrclib.net), API текстов Яндекса не используется. " +
-        "Текст можно открыть у любого трека; если LRCLIB недоступен, появляется уведомление.",
+        "Текст можно открыть у любого трека; текст следующего трека загружается заранее и сохраняется " +
+        "для офлайна. Если LRCLIB недоступен, появляется уведомление.",
 ) {
     compatibleWith(COMPATIBILITY_YANDEX_MUSIC)
 
     extendWith("extensions/lrclib-lyrics.mpe")
 
     execute {
-        hookTrackConstructor()
+        val trackType = hookTrackConstructor()
         hookLyricsRepository()
+        hookNextQueueItem(trackType)
     }
 }
 
@@ -79,7 +83,7 @@ val lyricsFallbackPatch = patch(
  * the player offers lyrics at all and in which format; with both set the app asks for LRC, and
  * LRCLIB answers for tracks Yandex has no lyrics for too.
  */
-private fun hookTrackConstructor() {
+private fun hookTrackConstructor(): String {
     val trackClass = classDefByStrings(TRACK_TO_STRING, StringComparisonType.EQUALS)
         .singleOrNull { it.interfaces.contains("Landroid/os/Parcelable;") }
         ?: throw PatchException("Track model was not found")
@@ -161,6 +165,101 @@ private fun hookTrackConstructor() {
         )
     }
     logger.info("Hooked track model $type (${returns.size} return(s), lyrics availability ${availability.name})")
+    return type
+}
+
+/**
+ * Prefetch the lyrics of the next queue item. The player's queue state (`btt` in 2026.11.2) is
+ * an interface; a single static helper (`ns8.G(btt)` in 2026.11.2) returns its next item, a
+ * playable interface (`lpn`) whose no-argument getter returns the track model or null. The
+ * helper is used by the playback core (next-track preloading) as well as the player screen, so
+ * it runs whenever the queue moves, in the background too.
+ *
+ * The helper is the only static method that takes a queue-state interface and returns a
+ * playable interface, so it is found by types alone. Its result is handed to a new static
+ * method on the track model that extracts the track id for the extension.
+ */
+private fun hookNextQueueItem(trackType: String) {
+    // Playable interfaces: interfaces with exactly one no-argument getter returning the track model.
+    val playableGetters = mutableMapOf<String, String>()
+    val interfaces = mutableMapOf<String, ClassDef>()
+    classDefForEach { classDef ->
+        if (!AccessFlags.INTERFACE.isSet(classDef.accessFlags)) return@classDefForEach
+        interfaces[classDef.type] = classDef
+        val getters = classDef.methods.filter { it.parameterTypes.isEmpty() && it.returnType == trackType }
+        if (getters.size == 1) playableGetters[classDef.type] = getters.single().name
+    }
+    if (playableGetters.isEmpty()) throw PatchException("No playable interface returns $trackType")
+
+    // Static (QueueState) -> Playable, where QueueState is an interface with a getter for the current playable.
+    val candidates = mutableListOf<Pair<ClassDef, Method>>()
+    classDefForEach { classDef ->
+        classDef.methods.forEach { method ->
+            if (!AccessFlags.STATIC.isSet(method.accessFlags)) return@forEach
+            if (method.parameterTypes.size != 1 || method.returnType !in playableGetters) return@forEach
+            val queueState = interfaces[method.parameterTypes[0].toString()] ?: return@forEach
+            if (queueState.methods.any { it.parameterTypes.isEmpty() && it.returnType == method.returnType }) {
+                candidates += classDef to method
+            }
+        }
+    }
+    val (ownerClass, nextMethod) = candidates.singleOrNull()
+        ?: throw PatchException("Expected one next-queue-item helper, found ${candidates.size}: " +
+            candidates.joinToString { "${it.first.type}.${it.second.name}" })
+    val playableType = nextMethod.returnType
+    val getter = playableGetters.getValue(playableType)
+
+    val mutableTrack = mutableClassDefBy(trackType)
+    val helper = ImmutableMethod(
+        trackType,
+        PREFETCH_NEXT_METHOD,
+        listOf(ImmutableMethodParameter(playableType, null, null)),
+        "V",
+        AccessFlags.PUBLIC.value or AccessFlags.STATIC.value,
+        null,
+        null,
+        MutableMethodImplementation(2),
+    ).toMutable()
+    helper.addInstructions(
+        0,
+        """
+            :try_start
+            if-eqz p0, :done
+            invoke-interface {p0}, $playableType->$getter()$trackType
+            move-result-object v0
+            if-eqz v0, :done
+            iget-object v0, v0, $trackType->a:$STRING
+            invoke-static {v0}, $LRCLIB_EXTENSION->prefetch($STRING)V
+            :try_end
+            .catch Ljava/lang/Throwable; {:try_start .. :try_end} :done
+            :done
+            return-void
+        """,
+    )
+    mutableTrack.methods.add(helper)
+
+    val method = mutableClassDefBy(ownerClass.type).methods.single {
+        it.name == nextMethod.name &&
+            it.parameterTypes.map(Any::toString) == nextMethod.parameterTypes.map(Any::toString) &&
+            it.returnType == nextMethod.returnType
+    }
+    val instructions = method.instructionsList()
+    if (instructions.any { it.opcode.name.startsWith("IF_") || it.opcode.name.startsWith("GOTO") }) {
+        throw PatchException("Next-queue-item helper ${ownerClass.type}.${method.name} has branches")
+    }
+    val returnIndex = instructions.indexOfFirst { it.opcode == Opcode.RETURN_OBJECT }
+    if (returnIndex < 0 || instructions.count { it.opcode == Opcode.RETURN_OBJECT } != 1) {
+        throw PatchException("Next-queue-item helper does not have exactly one return")
+    }
+    val register = (instructions[returnIndex] as OneRegisterInstruction).registerA
+    method.addInstructions(
+        returnIndex,
+        "invoke-static/range {v$register .. v$register}, $trackType->$PREFETCH_NEXT_METHOD($playableType)V",
+    )
+    logger.info(
+        "Next-queue-item helper ${ownerClass.type}.${method.name} prefetches lyrics " +
+            "(playable $playableType.$getter)",
+    )
 }
 
 /**

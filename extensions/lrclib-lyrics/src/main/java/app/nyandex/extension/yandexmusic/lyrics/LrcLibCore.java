@@ -9,12 +9,16 @@ package app.nyandex.extension.yandexmusic.lyrics;
 
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
+import java.text.Normalizer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -33,6 +37,25 @@ public final class LrcLibCore {
 
     private static final Pattern TIMESTAMP =
             Pattern.compile("\\[(\\d{1,3}):(\\d{1,2})(?:[.:](\\d{1,3}))?]");
+
+    /** A timestamp at the start of a normalized LRC line: {@code [mm:ss.xx]}. */
+    private static final Pattern NORMALIZED_TIMESTAMP = Pattern.compile("^\\[(\\d{2,}):(\\d{2})\\.(\\d{2})]");
+
+    /** Words that start a credit inside brackets or at the end of a title: "(feat. X)", "ft. X". */
+    private static final Set<String> CREDIT_WORDS = new HashSet<>(Arrays.asList(
+            "feat", "ft", "featuring", "with", "prod", "при", "уч"));
+
+    /**
+     * Words that mark a release variant rather than different lyrics: "(Remastered 2011)",
+     * "- Radio Edit", "[Live]". Remixes are kept: their timing usually differs.
+     */
+    private static final Set<String> VARIANT_WORDS = new HashSet<>(Arrays.asList(
+            "remaster", "remastered", "live", "edit", "version", "mono", "stereo", "deluxe", "bonus",
+            "explicit", "clean", "single", "anniversary", "ремастер", "версия"));
+
+    /** Prefix of a lyrics cache entry; see {@link #encodeCacheEntry}. */
+    static final String CACHE_MAGIC = "nyandex-lyrics-1";
+    static final String CACHE_NONE = "NONE";
 
     private LrcLibCore() {
     }
@@ -73,7 +96,15 @@ public final class LrcLibCore {
         return durationMs <= 0 ? 0 : (durationMs + 500) / 1000;
     }
 
-    /** Artist queries to try: all artists joined as LRCLIB usually stores them, then the first. */
+    /** Free-text search over artist, title and album: /api/search?q=. */
+    public static String buildQuerySearchUrl(String query) {
+        return BASE_URL + "search?q=" + encode(query);
+    }
+
+    /**
+     * Artist queries to try: all artists joined as LRCLIB usually stores them ("A, B", then
+     * "A & B"), then the first artist. The first artist is always last.
+     */
     public static List<String> artistCandidates(List<String> artists) {
         List<String> result = new ArrayList<>();
         if (artists == null || artists.isEmpty()) {
@@ -82,6 +113,10 @@ public final class LrcLibCore {
         String joined = join(artists, ", ");
         if (!joined.isEmpty()) {
             result.add(joined);
+        }
+        String ampersand = join(artists, " & ");
+        if (!ampersand.isEmpty() && !result.contains(ampersand)) {
+            result.add(ampersand);
         }
         String first = artists.get(0) == null ? "" : artists.get(0).trim();
         if (!first.isEmpty() && !result.contains(first)) {
@@ -100,6 +135,106 @@ public final class LrcLibCore {
             builder.append(trimmed);
         }
         return builder.toString();
+    }
+
+    /** Titles to try: the title as the app has it, then {@link #cleanTitle} if it differs. */
+    public static List<String> titleCandidates(String title) {
+        List<String> result = new ArrayList<>();
+        if (title == null || title.trim().isEmpty()) return result;
+        result.add(title.trim());
+        String clean = cleanTitle(title);
+        if (!clean.isEmpty() && !result.contains(clean)) result.add(clean);
+        return result;
+    }
+
+    /**
+     * Remove what LRCLIB titles usually do not have: credits ("(feat. X)", "[ft. X]",
+     * " feat. X" at the end) and release variants ("(Remastered 2011)", " - Radio Edit",
+     * "[Live]"). Other brackets such as "(Acoustic)" or "(Remix)" stay. Returns the trimmed
+     * title unchanged when nothing would be left.
+     */
+    public static String cleanTitle(String title) {
+        if (title == null) return "";
+        String original = title.trim();
+        StringBuilder result = new StringBuilder();
+        int position = 0;
+        while (position < original.length()) {
+            char c = original.charAt(position);
+            int close = c == '(' ? original.indexOf(')', position) : c == '[' ? original.indexOf(']', position) : -1;
+            if (close > position) {
+                List<String> words = words(original.substring(position + 1, close));
+                if (!words.isEmpty() && (CREDIT_WORDS.contains(words.get(0)) || containsAny(words, VARIANT_WORDS))) {
+                    position = close + 1;
+                    continue;
+                }
+            }
+            result.append(c);
+            position++;
+        }
+        String clean = result.toString().replaceAll("\\s+", " ").trim();
+
+        // " - Remastered 2011", " – Live at Wembley": the part after the last dash.
+        int dash = Math.max(clean.lastIndexOf(" - "), Math.max(clean.lastIndexOf(" \u2013 "), clean.lastIndexOf(" \u2014 ")));
+        if (dash > 0 && containsAny(words(clean.substring(dash + 3)), VARIANT_WORDS)) {
+            clean = clean.substring(0, dash).trim();
+        }
+
+        // " feat. X" without brackets, to the end of the title.
+        List<String> tokens = new ArrayList<>(Arrays.asList(clean.split(" ")));
+        for (int i = 1; i < tokens.size(); i++) {
+            String word = tokens.get(i).toLowerCase(Locale.ROOT);
+            if (word.equals("feat.") || word.equals("feat") || word.equals("ft.") || word.equals("featuring")) {
+                clean = join(tokens.subList(0, i), " ");
+                break;
+            }
+        }
+        return clean.isEmpty() ? original : clean;
+    }
+
+    /** Lowercase letter-and-digit words of a text. */
+    static List<String> words(String text) {
+        List<String> result = new ArrayList<>();
+        for (String word : text.toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{N}]+")) {
+            if (!word.isEmpty()) result.add(word);
+        }
+        return result;
+    }
+
+    private static boolean containsAny(List<String> words, Set<String> set) {
+        for (String word : words) {
+            if (set.contains(word)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Name for comparison: lowercase, without accents and punctuation, ё as е.
+     * "Beyoncé" and "BEYONCE" compare equal, as do "AC/DC" and "ACDC".
+     */
+    static String normalizeName(String name) {
+        if (name == null) return "";
+        String decomposed = Normalizer.normalize(name.toLowerCase(Locale.ROOT).replace('ё', 'е'), Normalizer.Form.NFKD);
+        StringBuilder result = new StringBuilder();
+        for (int i = 0; i < decomposed.length(); i++) {
+            char c = decomposed.charAt(i);
+            if (Character.isLetterOrDigit(c)) result.append(c);
+        }
+        return result.toString();
+    }
+
+    /**
+     * Whether a search result's artist belongs to the track: one of the track's artists is part
+     * of the result's artist ("Imagine Dragons" in "Imagine Dragons & JID") or the other way round.
+     */
+    public static boolean artistMatches(List<String> artists, String recordArtist) {
+        String record = normalizeName(recordArtist);
+        if (record.isEmpty() || artists == null) return false;
+        for (String artist : artists) {
+            String normalized = normalizeName(artist);
+            if (normalized.length() < 2) continue;
+            if (record.contains(normalized) || normalized.contains(record)) return true;
+        }
+        return false;
     }
 
     // endregion
@@ -144,6 +279,15 @@ public final class LrcLibCore {
      * synced lyrics first.
      */
     public static Map<String, Object> pickSearchResult(List<Object> results, long durationSeconds) {
+        return pickSearchResult(results, durationSeconds, null);
+    }
+
+    /**
+     * Like {@link #pickSearchResult(List, long)}, and when {@code artists} is not null the
+     * result's artist must match one of them ({@link #artistMatches}). Used for searches that
+     * LRCLIB does not filter by artist.
+     */
+    public static Map<String, Object> pickSearchResult(List<Object> results, long durationSeconds, List<String> artists) {
         if (results == null) return null;
         Map<String, Object> best = null;
         long bestScore = Long.MAX_VALUE;
@@ -152,6 +296,7 @@ public final class LrcLibCore {
             @SuppressWarnings("unchecked")
             Map<String, Object> record = (Map<String, Object>) item;
             if (Boolean.TRUE.equals(record.get("instrumental"))) continue;
+            if (artists != null && !artistMatches(artists, stringValue(record.get("artistName")))) continue;
 
             boolean hasSynced = !isBlank(stringValue(record.get("syncedLyrics")));
             boolean hasPlain = !isBlank(stringValue(record.get("plainLyrics")));
@@ -243,6 +388,79 @@ public final class LrcLibCore {
             result.append(line.substring(line.indexOf(']') + 1));
         }
         return result.toString().trim();
+    }
+
+    /**
+     * Shift normalized LRC by {@code offsetMs}: a positive offset shows every line earlier, a
+     * negative one later. Times are clamped at zero, so the line order is kept.
+     */
+    public static String shiftLrc(String lrc, long offsetMs) {
+        if (lrc == null || offsetMs == 0) return lrc;
+        long shift = Math.round(offsetMs / 10.0);
+        StringBuilder result = new StringBuilder();
+        for (String line : lrc.split("\n", -1)) {
+            if (result.length() > 0) result.append('\n');
+            Matcher matcher = NORMALIZED_TIMESTAMP.matcher(line);
+            if (!matcher.find()) {
+                result.append(line);
+                continue;
+            }
+            long time = (Long.parseLong(matcher.group(1)) * 60 + Long.parseLong(matcher.group(2))) * 100
+                    + Long.parseLong(matcher.group(3));
+            result.append(formatTimestamp(Math.max(0, time - shift))).append(line.substring(matcher.end()));
+        }
+        return result.toString();
+    }
+
+    // endregion
+
+    // region Cache entries
+
+    /**
+     * File name of a cached answer: the track id with anything but letters, digits, dot, dash
+     * and underscore replaced, and the requested format.
+     */
+    public static String cacheFileName(String trackId, String format) {
+        return trackId.replaceAll("[^A-Za-z0-9._-]", "_") + "." + format + ".txt";
+    }
+
+    /**
+     * A cached answer: magic line, time saved (ms since the epoch), format or NONE, then the
+     * lyrics content.
+     */
+    public static String encodeCacheEntry(String[] lyrics, long savedAt) {
+        return CACHE_MAGIC + "\n" + savedAt + "\n"
+                + (lyrics == null ? CACHE_NONE : lyrics[0]) + "\n"
+                + (lyrics == null ? "" : lyrics[1]);
+    }
+
+    /**
+     * @return The cached lyrics; an empty array for a cached "no lyrics" younger than
+     *         {@code missTtlMs}; null when the entry is invalid or an expired "no lyrics".
+     */
+    public static String[] decodeCacheEntry(String entry, long now, long missTtlMs) {
+        if (entry == null) return null;
+        int first = entry.indexOf('\n');
+        int second = first < 0 ? -1 : entry.indexOf('\n', first + 1);
+        int third = second < 0 ? -1 : entry.indexOf('\n', second + 1);
+        if (third < 0 || !CACHE_MAGIC.equals(entry.substring(0, first))) return null;
+
+        long savedAt;
+        try {
+            savedAt = Long.parseLong(entry.substring(first + 1, second));
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        String format = entry.substring(second + 1, third);
+        String content = entry.substring(third + 1);
+
+        if (CACHE_NONE.equals(format)) {
+            boolean fresh = savedAt <= now && now - savedAt < missTtlMs;
+            return fresh ? new String[0] : null;
+        }
+        if (!FORMAT_LRC.equals(format) && !FORMAT_TEXT.equals(format)) return null;
+        if (isBlank(content)) return null;
+        return new String[]{format, content};
     }
 
     // endregion

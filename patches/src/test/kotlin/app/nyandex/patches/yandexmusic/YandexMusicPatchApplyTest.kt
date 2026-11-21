@@ -17,6 +17,7 @@ import app.nyandex.patches.yandexmusic.misc.settings.hideBottomBarTabsPatch
 import app.nyandex.patches.yandexmusic.misc.settings.nyandexSettingsPatch
 import app.nyandex.patches.yandexmusic.misc.theme.monetThemePatch
 import app.nyandex.patches.yandexmusic.misc.network.blockPlusEventsPatch
+import app.nyandex.patches.yandexmusic.misc.network.cleanShareLinksPatch
 import app.nyandex.patches.yandexmusic.misc.network.removeTrackingHeadersPatch
 import app.nyandex.patches.yandexmusic.misc.signature.spoofFirebaseCertPatch
 import app.nyandex.patches.yandexmusic.misc.telemetry.disableTelemetryPatch
@@ -58,6 +59,7 @@ private const val NYANDEX_SETTINGS = "Lapp/nyandex/extension/yandexmusic/setting
 private const val SETTINGS_ENTRY = "Lapp/nyandex/extension/yandexmusic/settings/SettingsEntry;"
 private const val SETTINGS_ACTIVITY_TYPE = "Lapp/nyandex/extension/yandexmusic/settings/NyandexSettingsActivity;"
 private const val BOTTOM_TABS_HOOK = "Lapp/nyandex/extension/yandexmusic/settings/BottomTabsHook;"
+private const val SHARE_LINKS = "Lapp/nyandex/extension/yandexmusic/share/ShareLinks;"
 private const val MONET_COLORS = "Lapp/nyandex/extension/yandexmusic/monet/MonetColors;"
 
 private val BILLING_LITERALS = listOf(
@@ -193,6 +195,7 @@ class YandexMusicPatchApplyTest {
                 nyandexSettingsPatch,
                 hideBottomBarTabsPatch,
                 monetThemePatch,
+                cleanShareLinksPatch,
             )
 
             val results = runBlocking { patcher().toList() }
@@ -243,6 +246,8 @@ class YandexMusicPatchApplyTest {
         verifyFirebaseCertificate(dexFiles)
         verifyPassportAccountType(dexFiles, output)
         verifyLyricsFallback(dexFiles)
+        verifyLyricsPrefetch(dexFiles)
+        verifyShareLinks(dexFiles)
         verifySettingsAndTabs(dexFiles, output)
         verifyMonetTheme(output)
         verifyWaveButtonColors(dexFiles)
@@ -552,6 +557,68 @@ class YandexMusicPatchApplyTest {
             listOf(Opcode.SGET_OBJECT, Opcode.NEW_INSTANCE, Opcode.INVOKE_DIRECT, Opcode.RETURN_OBJECT),
             views.implementation!!.instructions.take(4).map { it.opcode },
             "The lyric views report is not disabled",
+        )
+    }
+
+    private fun verifyLyricsPrefetch(dexFiles: List<DexFile>) {
+        val classes = dexFiles.flatMap { it.classes }
+        fun calls(method: com.android.tools.smali.dexlib2.iface.Method) =
+            method.implementation?.instructions?.mapNotNull {
+                (it as? ReferenceInstruction)?.reference as? MethodReference
+            }.orEmpty()
+
+        val track = classes.single { classDef -> classDef.methods.any { it.name == "nyandexPrefetchNextLyrics" } }
+        val helper = track.methods.single { it.name == "nyandexPrefetchNextLyrics" }
+        assertTrue(
+            calls(helper).any { it.definingClass == LRCLIB_EXTENSION && it.name == "prefetch" },
+            "Prefetch helper does not call the LRCLIB extension",
+        )
+        assertTrue(
+            track.methods.any { it.name == "nyandexRememberLyricsTrack" },
+            "Prefetch helper is not on the track model",
+        )
+
+        // Exactly one static queue helper hands its result to the prefetch helper, right before returning.
+        val callers = classes.flatMap { classDef ->
+            classDef.methods.filter { method ->
+                calls(method).any { it.definingClass == track.type && it.name == "nyandexPrefetchNextLyrics" }
+            }
+        }
+        assertEquals(1, callers.size, "Expected one next-queue-item helper calling the prefetch helper")
+        val instructions = callers.single().implementation!!.instructions.toList()
+        assertEquals(Opcode.RETURN_OBJECT, instructions.last().opcode)
+        assertEquals(Opcode.INVOKE_STATIC_RANGE, instructions[instructions.size - 2].opcode)
+        assertEquals(
+            (instructions.last() as OneRegisterInstruction).registerA,
+            (instructions[instructions.size - 2] as com.android.tools.smali.dexlib2.iface.instruction.RegisterRangeInstruction).startRegister,
+            "The prefetch helper does not receive the returned queue item",
+        )
+    }
+
+    private fun verifyShareLinks(dexFiles: List<DexFile>) {
+        val classes = dexFiles.flatMap { it.classes }
+        assertTrue(classes.any { it.type == SHARE_LINKS }, "Share links extension class was not merged")
+        val callers = classes.flatMap { classDef ->
+            classDef.methods.filter { method ->
+                method.implementation?.instructions?.any { instruction ->
+                    val reference = (instruction as? ReferenceInstruction)?.reference as? MethodReference
+                    reference?.definingClass == SHARE_LINKS && reference.name == "clean"
+                } == true
+            }
+        }
+        assertEquals(1, callers.size, "Expected one share link builder calling ShareLinks.clean")
+        val instructions = callers.single().implementation!!.instructions.toList()
+        val clean = instructions.indexOfFirst { instruction ->
+            ((instruction as? ReferenceInstruction)?.reference as? MethodReference)?.definingClass == SHARE_LINKS
+        }
+        val toString = (instructions[clean - 2] as ReferenceInstruction).reference as MethodReference
+        assertEquals("toString", toString.name, "ShareLinks.clean does not follow the link's toString()")
+        assertEquals(Opcode.MOVE_RESULT_OBJECT, instructions[clean + 1].opcode)
+        val register = (instructions[clean + 1] as OneRegisterInstruction).registerA
+        assertEquals(register, (instructions[clean - 1] as OneRegisterInstruction).registerA)
+        assertTrue(
+            instructions.drop(clean + 2).any { it.opcode == Opcode.RETURN_OBJECT && (it as OneRegisterInstruction).registerA == register },
+            "The cleaned link is not what the builder returns",
         )
     }
 

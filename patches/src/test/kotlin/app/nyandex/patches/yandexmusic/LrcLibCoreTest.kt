@@ -15,6 +15,7 @@ import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -63,6 +64,10 @@ class LrcLibCoreTest {
             call("buildSearchUrl", "Imagine Dragons", "Believer"),
         )
         assertEquals("https://lrclib.net/api/search?track_name=Believer", call("buildSearchUrl", null, "Believer"))
+        assertEquals(
+            "https://lrclib.net/api/search?q=%D0%9A%D0%B8%D0%BD%D0%BE%20Believer",
+            call("buildQuerySearchUrl", "Кино Believer"),
+        )
         assertEquals(204L, call("secondsFromMillis", 204_347L))
         assertEquals(0L, call("secondsFromMillis", 0L))
     }
@@ -70,7 +75,7 @@ class LrcLibCoreTest {
     @Test
     fun `artist candidates are the joined list and then the main artist`() {
         assertEquals(
-            listOf("Imagine Dragons, Lil Wayne", "Imagine Dragons"),
+            listOf("Imagine Dragons, Lil Wayne", "Imagine Dragons & Lil Wayne", "Imagine Dragons"),
             call("artistCandidates", listOf("Imagine Dragons", " Lil Wayne ")),
         )
         assertEquals(listOf("Кино"), call("artistCandidates", listOf("Кино")))
@@ -160,6 +165,88 @@ class LrcLibCoreTest {
 
         assertNull(call("pickSearchResult", results, 300L))
         assertNull(call("pickSearchResult", null, 204L))
+    }
+
+    @Test
+    fun `titles lose credits and release variants but keep other brackets`() {
+        fun clean(title: String) = call("cleanTitle", title) as String
+        assertEquals("Believer", clean("Believer (feat. Lil Wayne)"))
+        assertEquals("Believer", clean("Believer [ft. Lil Wayne]"))
+        assertEquals("Believer", clean("Believer feat. Lil Wayne"))
+        assertEquals("Here Comes the Sun", clean("Here Comes the Sun (Remastered 2009)"))
+        assertEquals("Here Comes the Sun", clean("Here Comes the Sun - Remastered 2009"))
+        assertEquals("Song", clean("Song – Live at Wembley"))
+        assertEquals("Song", clean("Song (Radio Edit) [Explicit]"))
+        assertEquals("Песня", clean("Песня (при участии Кого-то)"))
+        assertEquals("Песня", clean("Песня (Ремастер)"))
+        assertEquals("Song (Acoustic)", clean("Song (Acoustic)"))
+        assertEquals("Song (Artist Remix)", clean("Song (Artist Remix)"))
+        assertEquals("Up - Down", clean("Up - Down"))
+        assertEquals("(Live)", clean("(Live)"))
+        assertEquals("Feat", clean("Feat"))
+
+        assertEquals(listOf("Believer (feat. X)", "Believer"), call("titleCandidates", "Believer (feat. X)"))
+        assertEquals(listOf("Believer"), call("titleCandidates", " Believer "))
+        assertEquals(emptyList<String>(), call("titleCandidates", "  "))
+    }
+
+    @Test
+    fun `artists match across case, accents, punctuation and collaborations`() {
+        fun matches(artists: List<String>, record: String?) = call("artistMatches", artists, record) as Boolean
+        assertTrue(matches(listOf("Beyoncé"), "BEYONCE"))
+        assertTrue(matches(listOf("AC/DC"), "ACDC"))
+        assertTrue(matches(listOf("Imagine Dragons"), "Imagine Dragons & JID"))
+        assertTrue(matches(listOf("Imagine Dragons", "JID"), "JID"))
+        assertTrue(matches(listOf("Ёлка"), "Елка"))
+        assertFalse(matches(listOf("Imagine Dragons"), "Coldplay"))
+        assertFalse(matches(listOf("A"), "ABBA")) // one-letter names are too ambiguous
+        assertFalse(matches(listOf("Кино"), null))
+    }
+
+    @Test
+    fun `search results can be required to match the artist`() {
+        @Suppress("UNCHECKED_CAST")
+        val results = json(
+            """[
+                {"id":1,"artistName":"Someone Else","duration":204,"syncedLyrics":"[00:01.00]x"},
+                {"id":2,"artistName":"Imagine Dragons","duration":205,"syncedLyrics":"[00:01.00]y"},
+                {"id":3,"duration":204,"syncedLyrics":"[00:01.00]no artist"}
+            ]""",
+        ) as List<Any?>
+        assertEquals(1L, (call("pickSearchResult", results, 204L) as Map<*, *>)["id"])
+        assertEquals(2L, (call("pickSearchResult", results, 204L, listOf("Imagine Dragons")) as Map<*, *>)["id"])
+        assertNull(call("pickSearchResult", results, 204L, listOf("Coldplay")))
+    }
+
+    @Test
+    fun `lrc is shifted earlier or later and clamped at zero`() {
+        val lrc = "[00:00.50]a\n[00:10.00]b\n[01:00.05]c"
+        assertEquals("[00:00.20]a\n[00:09.70]b\n[00:59.75]c", call("shiftLrc", lrc, 300L))
+        assertEquals("[00:01.00]a\n[00:10.50]b\n[01:00.55]c", call("shiftLrc", lrc, -500L))
+        assertEquals(lrc, call("shiftLrc", lrc, 0L))
+        assertEquals("[00:00.00]", call("shiftLrc", "[00:00.10]", 5000L))
+    }
+
+    @Test
+    fun `cache entries round-trip and misses expire`() {
+        val day = 24L * 60 * 60 * 1000
+        val lyrics = arrayOf("LRC", "[00:01.00]line one\n[00:02.00]line two")
+        val entry = call("encodeCacheEntry", lyrics, 1_000L) as String
+        assertContentEquals(lyrics, call("decodeCacheEntry", entry, 1_000L + 365 * day, 3 * day) as Array<String>)
+
+        val miss = call("encodeCacheEntry", null, 1_000L) as String
+        assertEquals(0, (call("decodeCacheEntry", miss, 1_000L + day, 3 * day) as Array<*>).size)
+        assertNull(call("decodeCacheEntry", miss, 1_000L + 4 * day, 3 * day))
+        assertNull(call("decodeCacheEntry", miss, 0L, 3 * day)) // saved in the future: clock changed
+
+        assertNull(call("decodeCacheEntry", "garbage", 0L, day))
+        assertNull(call("decodeCacheEntry", "nyandex-lyrics-1\nx\nLRC\ny", 0L, day))
+        assertNull(call("decodeCacheEntry", "nyandex-lyrics-1\n1\nRICH_JSON\n{}", 1L, day))
+        assertNull(call("decodeCacheEntry", null, 0L, day))
+
+        assertEquals("12345.LRC.txt", call("cacheFileName", "12345", "LRC"))
+        assertEquals("12345_678.TEXT.txt", call("cacheFileName", "12345:678", "TEXT"))
+        assertEquals(".._x.LRC.txt", call("cacheFileName", "../x", "LRC"))
     }
 
     @Test

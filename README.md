@@ -54,6 +54,15 @@ Morphe Manager compares the full version name, including the build suffix.
   track's artist, title and duration (nothing else). Tracks LRCLIB has no lyrics for show the
   app's lyrics error, and a toast appears when LRCLIB cannot be reached. LRCLIB lyrics are
   community-contributed and may be copyrighted; the patch is meant for personal use.
+  If the exact title has no match, the lookup retries without credits and release tags
+  ("feat. …", "Remastered", "Live", "Radio Edit") and then searches LRCLIB, accepting only
+  results with a matching artist and duration. The next track's lyrics are loaded in advance,
+  and every answer is saved in the app's cache, so replays and offline tracks keep their lyrics
+  ("no lyrics" is retried after 3 days). The Nyandex settings page has a timing offset (for
+  Bluetooth delay), a switch for loading in advance, a limit on how many lyrics are saved
+  (3000 by default, or off), and a button that clears the saved lyrics.
+- **Clean share links** removes `utm_*` and the random `ref_id` from shared and copied links;
+  `invite_id` stays on invitation links.
 - **Monet** is applied through Android 12+ dynamic colors. On older Android versions the app keeps
   its stock colors.
 - **Hidden tabs** disappear after restarting the app; the settings page offers a restart.

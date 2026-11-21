@@ -22,6 +22,17 @@ public final class NyandexSettings {
     static final String PREFERENCES = "nyandex";
     static final String HIDDEN_TAB_PREFIX = "hide_tab_";
 
+    /** Keys read by the LRCLIB lyrics extension (LrcLibLyrics). */
+    static final String LYRICS_OFFSET_KEY = "lyrics_offset_ms";
+    static final String LYRICS_PREFETCH_KEY = "lyrics_prefetch";
+    static final String LYRICS_CACHE_LIMIT_KEY = "lyrics_cache_limit";
+    /** Choices for the number of lyrics kept on disk; 0 keeps none. Must contain the default. */
+    static final int[] LYRICS_CACHE_LIMITS = {0, 500, 1000, 3000, 10000};
+    static final int LYRICS_CACHE_LIMIT_DEFAULT = 3000;
+    static final String LYRICS_CLASS = "app.nyandex.extension.yandexmusic.lyrics.LrcLibLyrics";
+    static final int LYRICS_OFFSET_STEP_MS = 100;
+    static final int LYRICS_OFFSET_LIMIT_MS = 5000;
+
     /**
      * Bottom bar tabs, by the name of the app's tab enum constant, in bar order.
      * Each entry: {enum name, English label, Russian label}.
@@ -78,6 +89,59 @@ public final class NyandexSettings {
     static void setTabHidden(String tab, boolean hidden) {
         SharedPreferences preferences = preferences();
         if (preferences != null) preferences.edit().putBoolean(HIDDEN_TAB_PREFIX + tab, hidden).apply();
+    }
+
+    /** The lyrics extension class, present only when the "LRCLIB lyrics" patch is applied. */
+    static Class<?> lyricsClass() {
+        try {
+            return Class.forName(LYRICS_CLASS);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    /** Call a public static no-argument int method of the lyrics extension, or return -1. */
+    static int callLyrics(String method) {
+        try {
+            Class<?> lyrics = lyricsClass();
+            return lyrics == null ? -1 : (Integer) lyrics.getMethod(method).invoke(null);
+        } catch (Throwable throwable) {
+            Log.e(TAG, "Lyrics call " + method + " failed", throwable);
+            return -1;
+        }
+    }
+
+    static int lyricsOffset() {
+        SharedPreferences preferences = preferences();
+        return preferences == null ? 0 : preferences.getInt(LYRICS_OFFSET_KEY, 0);
+    }
+
+    static void setLyricsOffset(int offsetMs) {
+        SharedPreferences preferences = preferences();
+        if (preferences != null) preferences.edit().putInt(LYRICS_OFFSET_KEY, offsetMs).apply();
+    }
+
+    static int lyricsCacheLimit() {
+        SharedPreferences preferences = preferences();
+        return preferences == null
+                ? LYRICS_CACHE_LIMIT_DEFAULT
+                : preferences.getInt(LYRICS_CACHE_LIMIT_KEY, LYRICS_CACHE_LIMIT_DEFAULT);
+    }
+
+    /** Store the limit synchronously: the lyrics extension trims its cache right after. */
+    static void setLyricsCacheLimit(int limit) {
+        SharedPreferences preferences = preferences();
+        if (preferences != null) preferences.edit().putInt(LYRICS_CACHE_LIMIT_KEY, limit).commit();
+    }
+
+    static boolean lyricsPrefetch() {
+        SharedPreferences preferences = preferences();
+        return preferences == null || preferences.getBoolean(LYRICS_PREFETCH_KEY, true);
+    }
+
+    static void setLyricsPrefetch(boolean enabled) {
+        SharedPreferences preferences = preferences();
+        if (preferences != null) preferences.edit().putBoolean(LYRICS_PREFETCH_KEY, enabled).apply();
     }
 
     static boolean isRussian() {
