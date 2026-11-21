@@ -18,8 +18,8 @@ or add `https://github.com/Ser1-1y/nyandex` manually. Then patch Yandex Music in
 
 - **Always patch the original APK/APKM** of a supported version (see below), never an app that
   is already patched.
-- Keep **Spoof app signature** enabled (it is on by default). Without it Yandex ID login fails
-  with "application signature mismatch".
+- Keep **Подменить подпись приложения** (Spoof app signature) enabled (it is on by default).
+  Without it Yandex ID login fails with "application signature mismatch".
 - After patching, Nyandex options are in the app: **Settings → Nyandex → Nyandex Settings**.
 
 ### Supported versions
@@ -50,6 +50,15 @@ Morphe Manager compares the full version name, including the build suffix.
 - **Monet** is applied through Android 12+ dynamic colors. On older Android versions the app keeps
   its stock colors.
 - **Hidden tabs** disappear after restarting the app; the settings page offers a restart.
+
+Patch names and descriptions are in Russian.
+
+## AI usage
+
+Nyandex is fully vibe-coded. All of it (the patches, the extensions, the tests, the release setup
+and this README) was written by an AI coding agent, Claude Code. The maintainer directed the work
+and tried the patched app, but no human wrote the code or reviewed it line by line. Expect bugs,
+read the code before you trust it, and use it at your own risk.
 
 ## Building
 
@@ -88,5 +97,5 @@ pre-releases). `patches-bundle.json` points Morphe Manager at the latest release
 
 GPLv3, see [LICENSE](LICENSE). Built from the
 [Morphe patches template](https://github.com/MorpheApp/morphe-patches-template); see
-[NOTICE](NOTICE) for the Morphe project's name restriction. "Spoof app signature" uses the
-signature spoof of the Morphe patches library.
+[NOTICE](NOTICE) for the Morphe project's name restriction. «Подменить подпись приложения» uses
+the signature spoof of the Morphe patches library.
