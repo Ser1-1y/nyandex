@@ -34,22 +34,11 @@ Morphe Manager compares the full version name, including the build suffix.
 ## Patches
 
 <!-- PATCHES_START EXPANDED -->
-<!-- The list below is regenerated on every release by .github/scripts/generate_patches_readme.py. -->
+> **[v1.0.0](https://github.com/Ser1-1y/nyandex/releases/tag/v1.0.0)**&nbsp;&nbsp;&middot;&nbsp;&nbsp;`main`&nbsp;&nbsp;&middot;&nbsp;&nbsp;**11 patches** across **1 apps**&nbsp;&nbsp;&middot;&nbsp;&nbsp;[Full details](PATCHES.md)
 
-| Patch | Default | What it does |
-|---|---|---|
-| **Lyrics fallback (LRCLIB)** | on | Accounts without Plus get a one-line notice («Подключите подписку на Плюс…») instead of lyrics. The patch replaces that notice with lyrics from [LRCLIB](https://lrclib.net): synced (karaoke) when available, plain otherwise. Real Yandex lyrics and errors are not touched. |
-| **Nyandex settings** | on | Adds a "Nyandex Settings" page, opened from the top of the app's settings. |
-| **Hide bottom bar tabs** | on | Switches on the Nyandex Settings page to hide My Vibe, Main, Podcasts, Concerts, For kids or Collection. At least one tab always stays. Requires Nyandex settings. |
-| **Monet theme** | off | Uses your wallpaper colors (Material You, Android 12+) for accents, buttons, cards and the My Vibe buttons. Page backgrounds stay black, the mini player keeps its cover color, and the Light / Dark / System setting keeps working. |
-| **Spoof app signature** | on | Lets the re-signed app see its original Yandex signature, so Yandex ID login works. |
-| **Spoof Firebase certificate header** | on | Sends the original certificate fingerprint to Firebase Installations, so Firebase keeps working after re-signing. |
-| **Isolate Passport account** | on | Gives the app its own Android account type, so it can log in next to other Yandex apps signed by Yandex. |
-| **Block Plus analytics** | on | Sends Plus event and acquisition traffic to `127.0.0.1`. The music and payment APIs are untouched. |
-| **Disable telemetry** | on | Neutralises AppsFlyer, AppMetrica, OpenTelemetry, Firebase Crashlytics and advertising-ID endpoints. |
-| **Remove tracking headers** | on | Stops sending `X-Request-Id` and the Yandex device-ID headers. |
-| **Disable Play Billing** | on | Disables Play Billing and Play Core services. In-app purchases are not possible. |
-
+| # | App | Patches | Version | Package |
+|---|---|---|---|---|
+| 1 | [**Yandex Music**](PATCHES.md#yandex-music-ruyandexmusic) | 11 | `2026.11.1 #171gpr`, `2026.11.2 #172.1gpr` | [`ru.yandex.music`](https://play.google.com/store/apps/details?id=ru.yandex.music) |
 <!-- PATCHES_END -->
 
 ## Notes
