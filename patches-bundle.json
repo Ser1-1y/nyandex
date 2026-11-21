@@ -1,8 +1,8 @@
 {
-  "created_at": "2026-11-21T05:15:30",
-  "description": "## [1.5.3](https://github.com/Ser1-1y/nyandex/compare/v1.5.2...v1.5.3) (2026-11-21)\n\n### 🐛 Bug Fixes\n\n* load lyrics for the \"Show lyrics\" sheet in the background ([e2f0064](https://github.com/Ser1-1y/nyandex/commit/e2f0064d399f6afbc2310f007061113b8c2802bf))",
-  "download_url": "https://github.com/Ser1-1y/nyandex/releases/download/v1.5.3/patches-1.5.3.mpp",
+  "created_at": "2026-11-21T05:19:01",
+  "description": "## [1.5.4](https://github.com/Ser1-1y/nyandex/compare/v1.5.3...v1.5.4) (2026-11-21)",
+  "download_url": "https://github.com/Ser1-1y/nyandex/releases/download/v1.5.4/patches-1.5.4.mpp",
   "signature_download_url": "",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "public_key": "bHYC5dGZH1n9TJJeU6+FO3/E31TKayvIUQxiOBis3TM="
 }
