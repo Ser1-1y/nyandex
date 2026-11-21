@@ -11,6 +11,7 @@ import app.morphe.patcher.Patcher
 import app.morphe.patcher.PatcherConfig
 import app.nyandex.patches.yandexmusic.misc.account.isolatePassportAccountPatch
 import app.nyandex.patches.yandexmusic.misc.billing.disablePlayBillingPatch
+import app.nyandex.patches.yandexmusic.misc.entitlement.unlockYandexPlusPatch
 import app.nyandex.patches.yandexmusic.misc.lyrics.lyricsFallbackPatch
 import app.nyandex.patches.yandexmusic.misc.settings.hideBottomBarTabsPatch
 import app.nyandex.patches.yandexmusic.misc.settings.nyandexSettingsPatch
@@ -121,6 +122,46 @@ private val TRACKING_HEADERS = listOf(
     "X-Yandex-Music-Device",
 )
 
+private data class Entitlement(val classType: String, val fieldName: String, val value: Int)
+
+private val ENTITLEMENTS = listOf(
+    Entitlement("Lcom/yandex/passport/data/network/d4;", "b", 1),
+    Entitlement("Lcom/yandex/passport/internal/database/b;", "c", 0),
+    Entitlement("Lcom/yandex/passport/internal/database/b;", "d", 1),
+    Entitlement("Lcom/yandex/passport/common/core/g;", "p", 1),
+    Entitlement("Lcom/yandex/passport/common/core/g;", "q", 1),
+    Entitlement("Lcom/yandex/passport/common/core/g;", "x", 0),
+    Entitlement("Lcom/yandex/passport/data/models/w;", "q", 1),
+    Entitlement("Lcom/yandex/passport/data/models/w;", "r", 1),
+    Entitlement("Lcom/yandex/passport/data/models/w;", "y", 0),
+    Entitlement("Lcom/yandex/passport/internal/account/g;", "o", 1),
+    Entitlement("Lcom/yandex/passport/internal/ui/bouncer/model/m2;", "h", 1),
+    Entitlement("Lcom/yandex/passport/internal/ui/bouncer/roundabout/items/h0;", "g", 1),
+    Entitlement("Lcom/yandex/passport/internal/ui/bouncer/roundabout/items/i0;", "i", 1),
+)
+
+/** Same shape match as the patch: R8 renames the session DTO between builds. */
+private fun isMusicSessionClass(classDef: ClassDef): Boolean =
+    classDef.interfaces.contains("Landroid/os/Parcelable;") &&
+        classDef.fields.any { it.name == "b" && it.type == "I" } &&
+        classDef.fields.any { it.name == "c" && it.type == "Ljava/lang/String;" } &&
+        classDef.fields.any { it.name == "d" && it.type == "Z" } &&
+        classDef.fields.any { it.name == "f" && it.type == "Z" } &&
+        classDef.fields.any { it.name == "g" && it.type == "Z" } &&
+        classDef.fields.any { it.name == "h" && it.type == "Z" } &&
+        classDef.fields.any { it.name == "i" && it.type == "Ljava/util/List;" } &&
+        classDef.methods.any { method ->
+            method.name == "<init>" &&
+                method.parameterTypes.size == 9 &&
+                method.parameterTypes[1] == "I" &&
+                method.parameterTypes[2] == "Ljava/lang/String;" &&
+                method.parameterTypes[3] == "Z" &&
+                method.parameterTypes[5] == "Z" &&
+                method.parameterTypes[6] == "Z" &&
+                method.parameterTypes[7] == "Z" &&
+                method.parameterTypes[8] == "Ljava/util/List;"
+        }
+
 class YandexMusicPatchApplyTest {
     @Test
     fun `all patches apply and the patched dex matches the expected changes`() {
@@ -140,6 +181,7 @@ class YandexMusicPatchApplyTest {
             ),
         ).use { patcher ->
             patcher += setOf(
+                unlockYandexPlusPatch,
                 disablePlayBillingPatch,
                 disableTelemetryPatch,
                 blockPlusEventsPatch,
@@ -203,7 +245,61 @@ class YandexMusicPatchApplyTest {
         verifySettingsAndTabs(dexFiles, output)
         verifyMonetTheme(output)
         verifyWaveButtonColors(dexFiles)
+        verifyEntitlements(dexFiles)
         verifyBranchTargets(dexFiles)
+    }
+
+    private fun verifyEntitlements(dexFiles: List<DexFile>) {
+        val sessionClass = dexFiles.asSequence()
+            .flatMap { it.classes.asSequence() }
+            .firstOrNull(::isMusicSessionClass)
+            ?.type
+            ?: throw AssertionError("Music session DTO was not found")
+
+        val expected = (
+            listOf(
+                Entitlement(sessionClass, "d", 1),
+                Entitlement(sessionClass, "f", 0),
+                Entitlement(sessionClass, "g", 1),
+                Entitlement(sessionClass, "h", 1),
+            ) + ENTITLEMENTS
+        ).associate { (it.classType to it.fieldName) to it.value }
+        val writes = mutableMapOf<Pair<String, String>, MutableList<Boolean>>()
+
+        dexFiles.forEach { dex ->
+            dex.classes.forEach { classDef ->
+                classDef.methods.forEach { method ->
+                    val instructions = method.implementation?.instructions?.toList() ?: return@forEach
+                    instructions.forEachIndexed { index, instruction ->
+                        if (instruction.opcode != Opcode.IPUT_BOOLEAN) return@forEachIndexed
+                        val field = ((instruction as? ReferenceInstruction)?.reference as? FieldReference)
+                            ?: return@forEachIndexed
+                        val key = field.definingClass to field.name
+                        val value = expected[key] ?: return@forEachIndexed
+
+                        val valueRegister = (instruction as TwoRegisterInstruction).registerA
+                        val previous = instructions.getOrNull(index - 1)
+                        val forced = previous?.opcode == Opcode.CONST_4 &&
+                            (previous as OneRegisterInstruction).registerA == valueRegister &&
+                            (previous as NarrowLiteralInstruction).narrowLiteral == value
+                        writes.getOrPut(key) { mutableListOf() }.add(forced)
+                    }
+                }
+            }
+        }
+
+        ENTITLEMENTS.forEach { entitlement ->
+            val key = entitlement.classType to entitlement.fieldName
+            val fieldWrites = writes[key]
+            assertTrue(
+                !fieldWrites.isNullOrEmpty(),
+                "No write found for ${entitlement.classType}->${entitlement.fieldName}",
+            )
+            assertTrue(
+                fieldWrites.all { it },
+                "Not every write of ${entitlement.classType}->${entitlement.fieldName} was forced",
+            )
+        }
     }
 
     /**

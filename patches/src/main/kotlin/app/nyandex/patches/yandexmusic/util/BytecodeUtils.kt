@@ -11,6 +11,7 @@ import app.morphe.patcher.StringComparisonType
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.extensions.InstructionExtensions.replaceInstruction
 import app.morphe.patcher.patch.PatchException
+import app.morphe.patcher.patch.classDefByOrNull
 import app.morphe.patcher.patch.classDefByStrings
 import app.morphe.patcher.patch.getAllClassesWithStrings
 import app.morphe.patcher.patch.mutableClassDefBy
@@ -19,6 +20,8 @@ import app.morphe.patcher.util.proxy.mutableTypes.encodedValue.MutableStringEnco
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
+import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.StringReference
 import com.android.tools.smali.dexlib2.iface.value.StringEncodedValue
 
@@ -29,6 +32,88 @@ import com.android.tools.smali.dexlib2.iface.value.StringEncodedValue
  * URLs with a path and formatted AppsFlyer endpoints intact while redirecting the host.
  */
 internal data class StringReplacement(val from: String, val to: String)
+
+/**
+ * Find the Parcelable music-session DTO that carries the client-side subscription flags.
+ *
+ * R8 renames the class and its referenced types between builds (`Lu8e;` in 2026.11.1,
+ * `Lipe;` in 2026.11.2), but the field layout and the constructor signature are stable:
+ * `a` object, `b` int, `c` String, `d` boolean, `e` object, `f`/`g`/`h` booleans,
+ * `i` List, `j` object. Matching the shape avoids hard-coding one build's class name.
+ */
+internal fun findMusicSessionClass(): String {
+    val classDef = classDefByOrNull { candidate ->
+        candidate.interfaces.contains("Landroid/os/Parcelable;") &&
+            candidate.fields.any { it.name == "a" && it.type.startsWith("L") } &&
+            candidate.fields.any { it.name == "b" && it.type == "I" } &&
+            candidate.fields.any { it.name == "c" && it.type == "Ljava/lang/String;" } &&
+            candidate.fields.any { it.name == "d" && it.type == "Z" } &&
+            candidate.fields.any { it.name == "e" && it.type.startsWith("L") } &&
+            candidate.fields.any { it.name == "f" && it.type == "Z" } &&
+            candidate.fields.any { it.name == "g" && it.type == "Z" } &&
+            candidate.fields.any { it.name == "h" && it.type == "Z" } &&
+            candidate.fields.any { it.name == "i" && it.type == "Ljava/util/List;" } &&
+            candidate.fields.any { it.name == "j" && it.type.startsWith("L") } &&
+            candidate.methods.any { method ->
+                method.name == "<init>" &&
+                    method.parameterTypes.size == 9 &&
+                    method.parameterTypes[0].startsWith("L") &&
+                    method.parameterTypes[1] == "I" &&
+                    method.parameterTypes[2] == "Ljava/lang/String;" &&
+                    method.parameterTypes[3] == "Z" &&
+                    method.parameterTypes[4].startsWith("L") &&
+                    method.parameterTypes[5] == "Z" &&
+                    method.parameterTypes[6] == "Z" &&
+                    method.parameterTypes[7] == "Z" &&
+                    method.parameterTypes[8] == "Ljava/util/List;"
+            }
+    } ?: throw PatchException("Music session DTO with subscription flags was not found")
+
+    return classDef.type
+}
+
+/**
+ * Replace every write of [classType] -> [fieldName] : Z with [value].
+ *
+ * The value is written immediately before the original `iput-boolean`, so every existing
+ * branch keeps its own write and can no longer overwrite the forced value. This is more
+ * reliable than appending instructions before `return-void`, because a branch can jump
+ * directly to that return instruction.
+ *
+ * @return The number of writes that were changed.
+ */
+internal fun forceBooleanField(classType: String, fieldName: String, value: Boolean): Int {
+    val mutableClass = mutableClassDefBy(classType)
+    var changed = 0
+
+    mutableClass.methods.toList().forEach { method ->
+        val implementation = method.implementation ?: return@forEach
+        val fieldWriteIndexes = implementation.instructions.mapIndexedNotNull { index, instruction ->
+            if (instruction.opcode != Opcode.IPUT_BOOLEAN) return@mapIndexedNotNull null
+
+            val field = (instruction as? ReferenceInstruction)?.reference as? FieldReference
+                ?: return@mapIndexedNotNull null
+
+            index.takeIf {
+                field.definingClass == classType &&
+                    field.name == fieldName &&
+                    field.type == "Z"
+            }
+        }
+
+        fieldWriteIndexes.asReversed().forEach { index ->
+            val sourceRegister = (implementation.instructions[index] as TwoRegisterInstruction).registerA
+            method.addInstructions(index, booleanConstantInstruction(sourceRegister, if (value) 1 else 0))
+            changed++
+        }
+    }
+
+    if (changed == 0) {
+        throw PatchException("No write of $classType->$fieldName:Z was found")
+    }
+
+    return changed
+}
 
 /**
  * Replace string literals in the instructions of every class that contains one of them.
@@ -177,6 +262,12 @@ private fun findReplacement(value: String, replacements: Array<out StringReplace
         .filter { value.contains(it.from) }
         .maxByOrNull { it.from.length }
         ?.let { value.replace(it.from, it.to) }
+}
+
+private fun booleanConstantInstruction(register: Int, value: Int): String = when {
+    register < 16 -> "const/4 v$register, 0x${value.toString(16)}"
+    register < 256 -> "const/16 v$register, 0x${value.toString(16)}"
+    else -> throw PatchException("Register v$register is too large for a boolean constant")
 }
 
 private fun constantStringInstruction(register: Int, value: String): String =
