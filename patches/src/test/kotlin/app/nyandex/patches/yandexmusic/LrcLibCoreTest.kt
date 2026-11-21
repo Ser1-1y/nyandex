@@ -15,7 +15,6 @@ import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -76,24 +75,6 @@ class LrcLibCoreTest {
         )
         assertEquals(listOf("Кино"), call("artistCandidates", listOf("Кино")))
         assertEquals(emptyList<String>(), call("artistCandidates", emptyList<String>()))
-    }
-
-    @Test
-    fun `only the short Plus notice is treated as the paywall`() {
-        fun paywall(text: String?) = call("isPaywallText", text) as Boolean
-
-        // The notice an account without Plus receives instead of the lyrics (seen on device).
-        assertTrue(paywall("Подключите подписку на Плюс, чтобы видеть тексты песен"))
-        assertTrue(paywall("[00:00.00]Подключите подписку на Плюс, чтобы видеть тексты песен"))
-        assertTrue(paywall("  Subscribe to Plus\nto see the lyrics  "))
-
-        // Real lyrics, including ones that happen to mention a subscription or a plus.
-        assertFalse(paywall("[00:01.00]First things first\n[00:03.00]I'ma say all the words"))
-        assertFalse(paywall("Плюс на минус даёт минус"))
-        assertFalse(paywall("Отменил подписку на журнал"))
-        assertFalse(paywall("подписка плюс " + "ля-ля-ля ".repeat(40)))
-        assertFalse(paywall(""))
-        assertFalse(paywall(null))
     }
 
     @Test

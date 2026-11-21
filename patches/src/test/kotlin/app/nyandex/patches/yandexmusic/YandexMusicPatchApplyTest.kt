@@ -492,8 +492,8 @@ class YandexMusicPatchApplyTest {
                 (it as? ReferenceInstruction)?.reference as? MethodReference
             }.orEmpty()
 
-        // Track model: a static helper hands id/title/duration/artists to the extension,
-        // and the constructor calls it.
+        // Track model: a static helper hands id/title/duration/artists to the extension and marks
+        // the track as having lyrics, and the constructor calls it.
         val track = classes.single { classDef ->
             classDef.methods.any { method -> method.name == "nyandexRememberLyricsTrack" }
         }
@@ -503,43 +503,55 @@ class YandexMusicPatchApplyTest {
             "Track helper does not call rememberTrack",
         )
         assertTrue(
+            calls(remember).any { it.name == "<init>" && it.parameterTypes.map(Any::toString) == listOf("Z", "Z") },
+            "Track helper does not build the lyrics availability",
+        )
+        assertTrue(
+            remember.implementation!!.instructions.any { instruction ->
+                val field = (instruction as? ReferenceInstruction)?.reference as? FieldReference
+                instruction.opcode == Opcode.IPUT_OBJECT && field?.definingClass == track.type
+            },
+            "Track helper does not store the lyrics availability",
+        )
+        assertTrue(
             track.methods.filter { it.name == "<init>" }.any { constructor ->
                 calls(constructor).any { it.isCall(track.type, "nyandexRememberLyricsTrack") }
             },
             "Track constructor does not call the lyrics helper",
         )
 
-        // Lyrics repository: the helper asks the extension and the download method calls it.
+        // Lyrics repository: the download method returns the LRCLIB helper's result right away.
         val repository = classes.single { classDef ->
-            classDef.methods.any { it.name == "nyandexLrcLibFallback" }
+            classDef.methods.any { it.name == "nyandexLrcLibLyrics" }
         }
-        val helper = repository.methods.single { it.name == "nyandexLrcLibFallback" }
+        val helper = repository.methods.single { it.name == "nyandexLrcLibLyrics" }
         assertTrue(
-            calls(helper).any { it.isCall(LRCLIB_EXTENSION, "replacePaywall") },
+            calls(helper).any { it.isCall(LRCLIB_EXTENSION, "lyrics") },
             "Lyrics helper does not call the LRCLIB extension",
         )
         val callers = repository.methods.filter { method ->
-            calls(method).any { it.isCall(repository.type, "nyandexLrcLibFallback") }
+            calls(method).any { it.isCall(repository.type, "nyandexLrcLibLyrics") }
         }
         assertEquals(1, callers.size, "Expected exactly one call site of the lyrics helper")
+        val download = callers.single().implementation!!.instructions.toList()
+        assertEquals(
+            listOf(Opcode.INVOKE_STATIC_RANGE, Opcode.MOVE_RESULT_OBJECT, Opcode.RETURN_OBJECT),
+            download.take(3).map { it.opcode },
+            "The download method does not return the LRCLIB result first",
+        )
 
-        // The call sits right before the final parse: a null result falls through to the
-        // original track info construction and parser, a non-null result is returned.
-        val instructions = callers.single().implementation!!.instructions.toList()
-        val callIndex = instructions.indexOfFirst { instruction ->
-            ((instruction as? ReferenceInstruction)?.reference as? MethodReference)
-                ?.isCall(repository.type, "nyandexLrcLibFallback") == true
+        // Lyric view report: returns success before reaching the Yandex API.
+        val views = repository.methods.single { method ->
+            calls(method).any { reference ->
+                reference.definingClass == "Lcom/yandex/music/shared/lyrics/LyricsHttpApi;" &&
+                    reference.parameterTypes.size == 1 &&
+                    reference.parameterTypes[0].toString() != "Ljava/lang/String;"
+            }
         }
-        assertEquals(Opcode.MOVE_RESULT_OBJECT, instructions[callIndex + 1].opcode)
-        assertEquals(Opcode.IF_EQZ, instructions[callIndex + 2].opcode, "Null result is not ignored")
-        assertEquals(Opcode.RETURN_OBJECT, instructions[callIndex + 3].opcode, "Lyrics are not returned")
-        assertEquals(Opcode.NEW_INSTANCE, instructions[callIndex + 4].opcode, "Original parse does not follow")
-        val parse = instructions.drop(callIndex + 4).take(4).mapNotNull {
-            ((it as? ReferenceInstruction)?.reference as? MethodReference)
-        }
-        assertTrue(
-            parse.any { it.parameterTypes.size == 4 && it.parameterTypes[3].toString() == "Ljava/lang/String;" },
-            "The parser call does not follow the hook",
+        assertEquals(
+            listOf(Opcode.SGET_OBJECT, Opcode.NEW_INSTANCE, Opcode.INVOKE_DIRECT, Opcode.RETURN_OBJECT),
+            views.implementation!!.instructions.take(4).map { it.opcode },
+            "The lyric views report is not disabled",
         )
     }
 

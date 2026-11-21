@@ -19,7 +19,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Pure Java part of the LRCLIB fallback: no Android classes, so it is unit tested on the JVM.
+ * Pure Java part of the LRCLIB lyrics: no Android classes, so it is unit tested on the JVM.
  */
 public final class LrcLibCore {
     public static final String BASE_URL = "https://lrclib.net/api/";
@@ -36,32 +36,6 @@ public final class LrcLibCore {
 
     private LrcLibCore() {
     }
-
-    // region Paywall detection
-
-    /** Longest text still treated as the Plus notice; real lyrics are much longer. */
-    static final int MAX_NOTICE_LENGTH = 300;
-
-    private static final Pattern NOTICE_SUBSCRIPTION =
-            Pattern.compile("подписк|subscri|obuna|жазыл", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
-    private static final Pattern NOTICE_PLUS =
-            Pattern.compile("плюс|plus", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
-
-    /**
-     * Whether the downloaded lyrics are Yandex's Plus notice instead of real lyrics.
-     *
-     * Accounts without Plus receive a successful response whose lyrics file is a single line
-     * such as «Подключите подписку на Плюс, чтобы видеть тексты песен». The check strips LRC
-     * timestamps and requires a short text that mentions both a subscription and Plus.
-     */
-    public static boolean isPaywallText(String content) {
-        if (content == null) return false;
-        String text = TIMESTAMP.matcher(content).replaceAll(" ").replaceAll("\\s+", " ").trim();
-        if (text.isEmpty() || text.length() > MAX_NOTICE_LENGTH) return false;
-        return NOTICE_SUBSCRIPTION.matcher(text).find() && NOTICE_PLUS.matcher(text).find();
-    }
-
-    // endregion
 
     // region URLs
 
