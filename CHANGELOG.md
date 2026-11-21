@@ -1,3 +1,9 @@
+## [1.5.3](https://github.com/Ser1-1y/nyandex/compare/v1.5.2...v1.5.3) (2026-11-21)
+
+### 🐛 Bug Fixes
+
+* load lyrics for the "Show lyrics" sheet in the background ([e2f0064](https://github.com/Ser1-1y/nyandex/commit/e2f0064d399f6afbc2310f007061113b8c2802bf))
+
 ## [1.5.2](https://github.com/Ser1-1y/nyandex/compare/v1.5.1...v1.5.2) (2026-11-21)
 
 ## [1.5.1](https://github.com/Ser1-1y/nyandex/compare/v1.5.0...v1.5.1) (2026-11-21)
