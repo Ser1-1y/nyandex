@@ -26,6 +26,8 @@ public final class NyandexSettings {
     static final String LYRICS_OFFSET_KEY = "lyrics_offset_ms";
     static final String LYRICS_PREFETCH_KEY = "lyrics_prefetch";
     static final String LYRICS_CACHE_LIMIT_KEY = "lyrics_cache_limit";
+    static final String LYRICS_DOWNLOAD_KEY = "lyrics_download_with_tracks";
+    static final String LYRICS_KEEP_DOWNLOADED_KEY = "lyrics_keep_downloaded";
     /** Choices for the number of lyrics kept on disk; 0 keeps none. Must contain the default. */
     static final int[] LYRICS_CACHE_LIMITS = {0, 500, 1000, 3000, 10000};
     static final int LYRICS_CACHE_LIMIT_DEFAULT = 3000;
@@ -132,6 +134,27 @@ public final class NyandexSettings {
     static void setLyricsCacheLimit(int limit) {
         SharedPreferences preferences = preferences();
         if (preferences != null) preferences.edit().putInt(LYRICS_CACHE_LIMIT_KEY, limit).commit();
+    }
+
+    static boolean lyricsDownloadWithTracks() {
+        SharedPreferences preferences = preferences();
+        return preferences == null || preferences.getBoolean(LYRICS_DOWNLOAD_KEY, true);
+    }
+
+    static void setLyricsDownloadWithTracks(boolean enabled) {
+        SharedPreferences preferences = preferences();
+        if (preferences != null) preferences.edit().putBoolean(LYRICS_DOWNLOAD_KEY, enabled).apply();
+    }
+
+    static boolean lyricsKeepDownloaded() {
+        SharedPreferences preferences = preferences();
+        return preferences == null || preferences.getBoolean(LYRICS_KEEP_DOWNLOADED_KEY, true);
+    }
+
+    /** Stored synchronously: the lyrics extension moves its files right after. */
+    static void setLyricsKeepDownloaded(boolean enabled) {
+        SharedPreferences preferences = preferences();
+        if (preferences != null) preferences.edit().putBoolean(LYRICS_KEEP_DOWNLOADED_KEY, enabled).commit();
     }
 
     static boolean lyricsPrefetch() {

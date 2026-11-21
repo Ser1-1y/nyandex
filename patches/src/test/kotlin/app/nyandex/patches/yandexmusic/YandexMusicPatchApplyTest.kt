@@ -247,6 +247,7 @@ class YandexMusicPatchApplyTest {
         verifyPassportAccountType(dexFiles, output)
         verifyLyricsFallback(dexFiles)
         verifyLyricsPrefetch(dexFiles)
+        verifyTrackCacheRow(dexFiles)
         verifyShareLinks(dexFiles)
         verifySettingsAndTabs(dexFiles, output)
         verifyMonetTheme(output)
@@ -593,6 +594,33 @@ class YandexMusicPatchApplyTest {
             (instructions[instructions.size - 2] as com.android.tools.smali.dexlib2.iface.instruction.RegisterRangeInstruction).startRegister,
             "The prefetch helper does not receive the returned queue item",
         )
+    }
+
+    private fun verifyTrackCacheRow(dexFiles: List<DexFile>) {
+        val classes = dexFiles.flatMap { it.classes }
+        fun calls(method: com.android.tools.smali.dexlib2.iface.Method) =
+            method.implementation?.instructions?.mapNotNull {
+                (it as? ReferenceInstruction)?.reference as? MethodReference
+            }.orEmpty()
+
+        val row = classes.single { classDef -> classDef.methods.any { it.name == "nyandexLyricsCacheRow" } }
+        assertTrue(
+            row.methods.any { method ->
+                method.name == "toString" && method.implementation!!.instructions.any {
+                    ((it as? ReferenceInstruction)?.reference as? StringReference)?.string == "TrackCacheRow(trackId="
+                }
+            },
+            "The lyrics cache row helper is not on the track cache row",
+        )
+        val helper = row.methods.single { it.name == "nyandexLyricsCacheRow" }
+        assertTrue(
+            calls(helper).any { it.definingClass == LRCLIB_EXTENSION && it.name == "cacheRow" },
+            "Cache row helper does not call the LRCLIB extension",
+        )
+        val constructors = row.methods.filter { method ->
+            method.name == "<init>" && calls(method).any { it.definingClass == row.type && it.name == "nyandexLyricsCacheRow" }
+        }
+        assertEquals(1, constructors.size, "Expected one track cache row constructor calling the helper")
     }
 
     private fun verifyShareLinks(dexFiles: List<DexFile>) {

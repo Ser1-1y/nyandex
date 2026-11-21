@@ -34,6 +34,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Called from the patched app. Lyrics come only from LRCLIB; the app's own lyrics API is not used.
@@ -47,6 +49,10 @@ import java.util.concurrent.Executors;
  *
  * Answers are kept in memory and on disk (the app's cache directory), so replays and offline
  * tracks need no network. "No lyrics" is kept for {@link #MISS_TTL_MS} because LRCLIB grows.
+ *
+ * {@link #cacheRow} sees every row of the app's track cache (a downloaded or a temporarily cached
+ * track). Lyrics of downloaded tracks are loaded too, and by default kept in the app's files
+ * directory, which Android does not clear and the cache limit does not count.
  */
 @SuppressWarnings("unused")
 public final class LrcLibLyrics {
@@ -55,7 +61,7 @@ public final class LrcLibLyrics {
             "Nyandex/1.0 (Yandex Music lyrics from LRCLIB)";
     private static final int CONNECT_TIMEOUT_MS = 4000;
     private static final int READ_TIMEOUT_MS = 5000;
-    private static final int MAX_TRACKS = 512;
+    private static final int MAX_TRACKS = 4096;
     private static final String[] NOT_FOUND = new String[0];
     private static final long TOAST_INTERVAL_MS = 30_000;
     private static final String UNREACHABLE_MESSAGE = "Не удалось подключиться к LRCLIB";
@@ -63,6 +69,18 @@ public final class LrcLibLyrics {
     /** How long "LRCLIB has no lyrics for this track" is trusted. */
     static final long MISS_TTL_MS = 3L * 24 * 60 * 60 * 1000;
     private static final String CACHE_DIRECTORY = "nyandex-lyrics";
+    /** Lyrics of downloaded tracks: in the files directory, not limited. */
+    private static final String KEEP_DIRECTORY = "nyandex-lyrics-downloads";
+    private static final String[] DISK_FORMATS = {LrcLibCore.FORMAT_LRC, LrcLibCore.FORMAT_TEXT};
+    /** Pause between LRCLIB lookups for downloaded tracks, to go easy on LRCLIB. */
+    private static final long DOWNLOAD_GAP_MS = 300;
+    /** After LRCLIB could not be reached, downloaded tracks wait this long before asking again. */
+    private static final long DOWNLOAD_BACKOFF_MS = 60_000;
+    /**
+     * Delay after the first downloaded row of a process before the downloads folder is checked
+     * for tracks that are no longer downloaded (the app reads its cache database by then).
+     */
+    private static final long RECONCILE_DELAY_MS = 120_000;
     /** Default number of answers kept on disk; the settings page can change it (0 turns the disk cache off). */
     static final int DEFAULT_CACHE_LIMIT = 3000;
     private static final int PRUNE_EVERY_WRITES = 25;
@@ -79,6 +97,10 @@ public final class LrcLibLyrics {
     static final String PREFETCH_KEY = "lyrics_prefetch";
     /** Maximum number of answers kept on disk; 0 keeps nothing on disk. */
     static final String CACHE_LIMIT_KEY = "lyrics_cache_limit";
+    /** Whether downloading a track also loads its lyrics (default on). */
+    static final String DOWNLOAD_KEY = "lyrics_download_with_tracks";
+    /** Whether lyrics of downloaded tracks are kept apart from the limited cache (default on). */
+    static final String KEEP_DOWNLOADED_KEY = "lyrics_keep_downloaded";
 
     /** LRCLIB could not be reached: network error or an HTTP status other than 200 and 404. */
     private static final class UnreachableException extends IOException {
@@ -121,6 +143,24 @@ public final class LrcLibLyrics {
                 }
             });
 
+    /** Tracks seen as downloaded in this process. */
+    private static final Set<String> DOWNLOADED = Collections.newSetFromMap(new ConcurrentHashMap<String, Boolean>());
+    /** Tracks seen only as temporarily cached in this process. */
+    private static final Set<String> NOT_DOWNLOADED = Collections.newSetFromMap(new ConcurrentHashMap<String, Boolean>());
+    /** Downloaded tracks waiting for their metadata (title, artists) before LRCLIB can be asked. */
+    private static final Set<String> PENDING = Collections.newSetFromMap(new ConcurrentHashMap<String, Boolean>());
+
+    /**
+     * Downloaded-track lookups and every bulk file operation (moving, trimming, clearing), on one
+     * thread so they never race each other and never run on the UI thread.
+     */
+    private static final ScheduledExecutorService DOWNLOADER = Executors.newSingleThreadScheduledExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "NyandexLyricsDownload");
+        thread.setDaemon(true);
+        thread.setPriority(Thread.MIN_PRIORITY);
+        return thread;
+    });
+
     private static final ExecutorService PREFETCHER = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "NyandexLyricsPrefetch");
         thread.setDaemon(true);
@@ -129,6 +169,9 @@ public final class LrcLibLyrics {
     });
 
     private static volatile long lastToastAt;
+    /** Until when downloaded tracks do not ask LRCLIB, after it could not be reached. */
+    private static volatile long downloadBackoffUntil;
+    private static volatile boolean reconcileScheduled;
     private static volatile Context context;
     private static int diskWrites;
 
@@ -142,7 +185,153 @@ public final class LrcLibLyrics {
             synchronized (TRACKS) {
                 TRACKS.put(id, new Track(title, durationMs, artists));
             }
+            if (!PENDING.isEmpty() && PENDING.remove(id)) {
+                DOWNLOADER.execute(() -> fetchDownloaded(id));
+            }
         } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * Injected at the end of the track cache row constructor: one row per cached file of a track,
+     * built when a track is cached or downloaded and whenever the cache database is read. Must
+     * stay cheap and never throw.
+     *
+     * @param rowTrackId The row's track id; smart previews carry an "_sm" suffix.
+     * @param cacheType  The app's cache type enum (TemporaryCache, AutoCache, SmartCache,
+     *                   PermanentStrong, PermanentWeak).
+     */
+    public static void cacheRow(String rowTrackId, Object cacheType) {
+        try {
+            String trackId = LrcLibCore.normalizeTrackId(rowTrackId);
+            if (trackId == null || cacheType == null) return;
+            String type = cacheType instanceof Enum ? ((Enum<?>) cacheType).name() : String.valueOf(cacheType);
+            if (LrcLibCore.isDownloadedCacheType(type)) {
+                if (DOWNLOADED.add(trackId)) DOWNLOADER.execute(() -> onDownloaded(trackId));
+                scheduleReconcile();
+            } else if (!DOWNLOADED.contains(trackId) && NOT_DOWNLOADED.add(trackId)) {
+                DOWNLOADER.execute(() -> onNotDownloaded(trackId));
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * Downloaded lyrics are only fetched in the background when they can be kept: with "keep
+     * lyrics of downloaded tracks" off they would land in the limited cache and could be evicted
+     * and fetched again on every launch.
+     */
+    private static boolean downloadsEnabled() {
+        return setting(DOWNLOAD_KEY, true) && setting(KEEP_DOWNLOADED_KEY, true);
+    }
+
+    private static void onDownloaded(String trackId) {
+        try {
+            if (!setting(KEEP_DOWNLOADED_KEY, true)) return;
+            moveFiles(trackId, cacheDirectory(), keepDirectory());
+            if (downloadsEnabled()) storeDownloaded(trackId);
+        } catch (Throwable throwable) {
+            Log.e(TAG, "Downloaded track lyrics failed", throwable);
+        }
+    }
+
+    /** A track that is no longer downloaded: its lyrics go back to the limited cache. */
+    private static void onNotDownloaded(String trackId) {
+        try {
+            if (!DOWNLOADED.contains(trackId)) moveFiles(trackId, keepDirectory(), cacheDirectory());
+        } catch (Throwable throwable) {
+            Log.e(TAG, "Moving lyrics back to the cache failed", throwable);
+        }
+    }
+
+    private static void fetchDownloaded(String trackId) {
+        try {
+            if (downloadsEnabled() && DOWNLOADED.contains(trackId)) storeDownloaded(trackId);
+        } catch (Throwable throwable) {
+            Log.e(TAG, "Lyrics of downloaded track failed", throwable);
+        }
+    }
+
+    /**
+     * Make sure a downloaded track's answer is on disk (in the downloads folder). Uses an answer
+     * already in memory if there is one; otherwise asks LRCLIB without filling the in-memory
+     * cache, so a large download library does not stay in memory. Waits between lookups, and
+     * longer after LRCLIB could not be reached.
+     */
+    private static void storeDownloaded(String trackId) throws InterruptedException {
+        if (readDisk(trackId, PREFETCH_FORMAT) != null) return;
+        String cacheKey = trackId + '|' + PREFETCH_FORMAT;
+        String[] cached = CACHE.get(cacheKey);
+        if (cached != null) {
+            writeDisk(trackId, PREFETCH_FORMAT, cached.length == 0 ? null : cached);
+            return;
+        }
+        Track track = track(trackId);
+        if (track == null || System.currentTimeMillis() < downloadBackoffUntil) {
+            PENDING.add(trackId); // Retried when the track's metadata is seen again.
+            return;
+        }
+
+        Object lock = lock(cacheKey);
+        boolean queried = false;
+        try {
+            synchronized (lock) {
+                if (CACHE.containsKey(cacheKey) || readDisk(trackId, PREFETCH_FORMAT) != null) {
+                    cached = CACHE.get(cacheKey);
+                    if (cached != null) writeDisk(trackId, PREFETCH_FORMAT, cached.length == 0 ? null : cached);
+                    return;
+                }
+                queried = true;
+                String[] lyrics = query(track, PREFETCH_FORMAT);
+                writeDisk(trackId, PREFETCH_FORMAT, lyrics);
+                Log.i(TAG, "Downloaded track " + trackId + ": " + (lyrics == null ? "no lyrics" : lyrics[0]));
+            }
+        } catch (IOException exception) {
+            downloadBackoffUntil = System.currentTimeMillis() + DOWNLOAD_BACKOFF_MS;
+            PENDING.add(trackId);
+            Log.i(TAG, "Lyrics of downloaded track " + trackId + " failed: " + exception);
+        } finally {
+            LOCKS.remove(cacheKey, lock);
+            if (queried) Thread.sleep(DOWNLOAD_GAP_MS);
+        }
+    }
+
+    /**
+     * Once per process, some time after the app has read its cache database: lyrics in the
+     * downloads folder of tracks that were not seen as downloaded go back to the limited cache.
+     * If a download is only seen later, it is moved back to the downloads folder then.
+     */
+    private static void scheduleReconcile() {
+        if (reconcileScheduled) return;
+        reconcileScheduled = true;
+        DOWNLOADER.schedule(LrcLibLyrics::reconcile, RECONCILE_DELAY_MS, TimeUnit.MILLISECONDS);
+    }
+
+    private static void reconcile() {
+        try {
+            File keep = keepDirectory();
+            File cache = cacheDirectory();
+            if (keep == null || cache == null || DOWNLOADED.isEmpty()) return;
+            Set<String> downloaded = new java.util.HashSet<>();
+            for (String trackId : DOWNLOADED) {
+                for (String format : DISK_FORMATS) downloaded.add(LrcLibCore.cacheFileName(trackId, format));
+            }
+            File[] files = keep.listFiles();
+            if (files == null) return;
+            int moved = 0;
+            for (File file : files) {
+                if (downloaded.contains(file.getName())) continue;
+                File target = new File(cache, file.getName());
+                //noinspection ResultOfMethodCallIgnored
+                target.delete();
+                if (file.renameTo(target)) moved++;
+            }
+            if (moved > 0) {
+                Log.i(TAG, "Moved lyrics of " + moved + " no longer downloaded track file(s) to the cache");
+                trimNow();
+            }
+        } catch (Throwable throwable) {
+            Log.e(TAG, "Reconciling downloaded lyrics failed", throwable);
         }
     }
 
@@ -227,12 +416,7 @@ public final class LrcLibLyrics {
         String[] cached = CACHE.get(cacheKey);
         if (cached != null) return cached.length == 0 ? null : cached;
 
-        Object lock = LOCKS.get(cacheKey);
-        if (lock == null) {
-            Object created = new Object();
-            lock = LOCKS.putIfAbsent(cacheKey, created);
-            if (lock == null) lock = created;
-        }
+        Object lock = lock(cacheKey);
         synchronized (lock) {
             try {
                 cached = CACHE.get(cacheKey);
@@ -263,6 +447,17 @@ public final class LrcLibLyrics {
         }
     }
 
+    /** The lock of a track and format; release with {@code LOCKS.remove(key, lock)}. */
+    private static Object lock(String cacheKey) {
+        Object lock = LOCKS.get(cacheKey);
+        if (lock == null) {
+            Object created = new Object();
+            lock = LOCKS.putIfAbsent(cacheKey, created);
+            if (lock == null) lock = created;
+        }
+        return lock;
+    }
+
     private static Track track(String trackId) {
         synchronized (TRACKS) {
             Track track = TRACKS.get(trackId);
@@ -284,17 +479,29 @@ public final class LrcLibLyrics {
     }
 
     /**
-     * Forget every cached answer, in memory and on disk. Called by the Nyandex settings page.
+     * Forget every cached answer, in memory and on disk. Called by the Nyandex settings page; the
+     * files are deleted on the background thread. With downloaded lyrics enabled, the lyrics of
+     * downloaded tracks are then loaded again.
      *
-     * @return The number of files deleted.
+     * @return 0; the deletion runs in the background.
      */
     public static int clearCache() {
         CACHE.clear();
         synchronized (PREFETCHED) {
             PREFETCHED.clear();
         }
+        PENDING.clear();
+        NOT_DOWNLOADED.clear();
+        DOWNLOADER.execute(() -> {
+            deleteAll(cacheDirectory());
+            deleteAll(keepDirectory());
+            for (String trackId : DOWNLOADED) onDownloaded(trackId);
+        });
+        return 0;
+    }
+
+    private static int deleteAll(File directory) {
         int deleted = 0;
-        File directory = cacheDirectory();
         File[] files = directory == null ? null : directory.listFiles();
         if (files != null) {
             for (File file : files) {
@@ -305,27 +512,67 @@ public final class LrcLibLyrics {
     }
 
     /**
-     * Apply the disk cache limit from the settings page right away. Called by the settings page
-     * after the limit changes.
+     * Apply the "download lyrics with tracks" and "keep lyrics of downloaded tracks" settings in
+     * the background: move the lyrics of downloaded tracks out of the limited cache and load the
+     * missing ones, or move them all back into the cache. Called by the settings page.
      *
-     * @return The number of files deleted.
+     * @return 0; the work runs in the background.
      */
-    public static int trimCache() {
-        File directory = cacheDirectory();
-        if (directory == null) return 0;
-        int limit = cacheLimit();
-        if (limit > 0) return prune(directory, limit);
-        int deleted = 0;
-        File[] files = directory.listFiles();
-        if (files != null) {
-            for (File file : files) {
-                if (file.delete()) deleted++;
+    public static int applyStorageSettings() {
+        DOWNLOADER.execute(() -> {
+            try {
+                File cache = cacheDirectory();
+                File keep = keepDirectory();
+                if (cache == null || keep == null) return;
+                if (setting(KEEP_DOWNLOADED_KEY, true)) {
+                    for (String trackId : DOWNLOADED) onDownloaded(trackId);
+                    return;
+                }
+                File[] files = keep.listFiles();
+                if (files != null) {
+                    for (File file : files) {
+                        File target = new File(cache, file.getName());
+                        //noinspection ResultOfMethodCallIgnored
+                        target.delete();
+                        //noinspection ResultOfMethodCallIgnored
+                        file.renameTo(target);
+                    }
+                }
+                trimNow();
+            } catch (Throwable throwable) {
+                Log.e(TAG, "Applying lyrics storage settings failed", throwable);
             }
-        }
-        return deleted;
+        });
+        return 0;
     }
 
-    /** Number of answers in the disk cache, for the settings page. */
+    /** Number of saved lyrics of downloaded tracks (kept apart from the limited cache). */
+    public static int downloadedCacheSize() {
+        File directory = keepDirectory();
+        File[] files = directory == null ? null : directory.listFiles();
+        return files == null ? 0 : files.length;
+    }
+
+    /**
+     * Apply the disk cache limit from the settings page, in the background. Called by the
+     * settings page after the limit changes.
+     *
+     * @return 0; the work runs in the background.
+     */
+    public static int trimCache() {
+        DOWNLOADER.execute(LrcLibLyrics::trimNow);
+        return 0;
+    }
+
+    private static void trimNow() {
+        File directory = cacheDirectory();
+        if (directory == null) return;
+        int limit = cacheLimit();
+        if (limit > 0) prune(directory, limit);
+        else deleteAll(directory);
+    }
+
+    /** Number of answers in the limited disk cache, for the settings page. */
     public static int cacheSize() {
         File directory = cacheDirectory();
         File[] files = directory == null ? null : directory.listFiles();
@@ -342,17 +589,53 @@ public final class LrcLibLyrics {
 
     private static File cacheDirectory() {
         Context current = appContext();
-        if (current == null) return null;
-        File directory = new File(current.getCacheDir(), CACHE_DIRECTORY);
-        if (!directory.isDirectory() && !directory.mkdirs()) return null;
-        return directory;
+        return current == null ? null : directory(new File(current.getCacheDir(), CACHE_DIRECTORY));
+    }
+
+    private static File keepDirectory() {
+        Context current = appContext();
+        return current == null ? null : directory(new File(current.getFilesDir(), KEEP_DIRECTORY));
+    }
+
+    private static File directory(File directory) {
+        return directory.isDirectory() || directory.mkdirs() ? directory : null;
+    }
+
+    /** Where a new answer for the track is written. */
+    private static File targetDirectory(String trackId) {
+        return setting(KEEP_DOWNLOADED_KEY, true) && DOWNLOADED.contains(trackId) ? keepDirectory() : cacheDirectory();
+    }
+
+    /** Move a track's saved answers (every format) between the two directories. */
+    private static int moveFiles(String trackId, File from, File to) {
+        if (from == null || to == null) return 0;
+        int moved = 0;
+        for (String format : DISK_FORMATS) {
+            String name = LrcLibCore.cacheFileName(trackId, format);
+            File source = new File(from, name);
+            if (!source.isFile()) continue;
+            File target = new File(to, name);
+            //noinspection ResultOfMethodCallIgnored
+            target.delete();
+            if (source.renameTo(target)) moved++;
+        }
+        return moved;
+    }
+
+    private static boolean setting(String key, boolean defaultValue) {
+        SharedPreferences preferences = preferences();
+        return preferences == null ? defaultValue : preferences.getBoolean(key, defaultValue);
     }
 
     /** @return Cached lyrics, an empty array for a fresh "no lyrics", or null if not cached. */
     private static String[] readDisk(String trackId, String requested) {
+        String[] lyrics = readDisk(keepDirectory(), trackId, requested);
+        if (lyrics != null || cacheLimit() == 0) return lyrics;
+        return readDisk(cacheDirectory(), trackId, requested);
+    }
+
+    private static String[] readDisk(File directory, String trackId, String requested) {
         try {
-            if (cacheLimit() == 0) return null;
-            File directory = cacheDirectory();
             if (directory == null) return null;
             File file = new File(directory, LrcLibCore.cacheFileName(trackId, requested));
             if (!file.isFile()) return null;
@@ -377,10 +660,12 @@ public final class LrcLibLyrics {
 
     private static void writeDisk(String trackId, String requested, String[] lyrics) {
         try {
-            int limit = cacheLimit();
-            if (limit == 0) return;
-            File directory = cacheDirectory();
+            File directory = targetDirectory(trackId);
             if (directory == null) return;
+            File cache = cacheDirectory();
+            boolean limited = directory.equals(cache);
+            int limit = cacheLimit();
+            if (limited && limit == 0) return;
             File file = new File(directory, LrcLibCore.cacheFileName(trackId, requested));
             File temporary = new File(directory, file.getName() + ".tmp");
             try (OutputStream output = new FileOutputStream(temporary)) {
@@ -395,7 +680,11 @@ public final class LrcLibLyrics {
             synchronized (LrcLibLyrics.class) {
                 prune = diskWrites++ % PRUNE_EVERY_WRITES == 0;
             }
-            if (prune) prune(directory, limit);
+            if (!limited && cache != null) {
+                //noinspection ResultOfMethodCallIgnored
+                new File(cache, file.getName()).delete();
+            }
+            if (prune && limited) prune(directory, limit);
         } catch (Throwable throwable) {
             Log.w(TAG, "Could not cache lyrics", throwable);
         }

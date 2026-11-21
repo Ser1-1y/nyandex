@@ -417,6 +417,27 @@ public final class LrcLibCore {
     // region Cache entries
 
     /**
+     * The track id of a track cache row as the track model has it: without an album part
+     * ("id:album") and without the smart preview suffix ("id_sm").
+     */
+    public static String normalizeTrackId(String trackId) {
+        if (trackId == null) return null;
+        String id = trackId.trim();
+        int separator = id.indexOf(':');
+        if (separator >= 0) id = id.substring(0, separator);
+        if (id.endsWith("_sm")) id = id.substring(0, id.length() - 3);
+        return id.isEmpty() ? null : id;
+    }
+
+    /**
+     * Whether a track cache row of this type (the app's cache type enum name) is a download the
+     * user keeps offline: everything but the temporary playback cache.
+     */
+    public static boolean isDownloadedCacheType(String type) {
+        return type != null && !type.isEmpty() && !"TemporaryCache".equals(type);
+    }
+
+    /**
      * File name of a cached answer: the track id with anything but letters, digits, dot, dash
      * and underscore replaced, and the requested format.
      */
