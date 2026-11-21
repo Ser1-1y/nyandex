@@ -232,7 +232,7 @@ class LrcLibCoreTest {
         val day = 24L * 60 * 60 * 1000
         val lyrics = arrayOf("LRC", "[00:01.00]line one\n[00:02.00]line two")
         val entry = call("encodeCacheEntry", lyrics, 1_000L) as String
-        assertContentEquals(lyrics, call("decodeCacheEntry", entry, 1_000L + 365 * day, 3 * day) as Array<String>)
+        assertEquals(lyrics.toList(), (call("decodeCacheEntry", entry, 1_000L + 365 * day, 3 * day) as Array<*>).toList())
 
         val miss = call("encodeCacheEntry", null, 1_000L) as String
         assertEquals(0, (call("decodeCacheEntry", miss, 1_000L + day, 3 * day) as Array<*>).size)
