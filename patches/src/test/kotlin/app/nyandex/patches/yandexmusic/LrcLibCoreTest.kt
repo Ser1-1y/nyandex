@@ -259,6 +259,16 @@ class LrcLibCoreTest {
     }
 
     @Test
+    fun `cache row ids are normalized to the track model id`() {
+        assertEquals("12345", call("normalizeTrackId", "12345"))
+        assertEquals("12345", call("normalizeTrackId", "12345_sm"))
+        assertEquals("12345", call("normalizeTrackId", "12345:678"))
+        assertEquals("12345", call("normalizeTrackId", " 12345 "))
+        assertNull(call("normalizeTrackId", ""))
+        assertNull(call("normalizeTrackId", null))
+    }
+
+    @Test
     fun `json reader handles escapes, unicode and nesting`() {
         val value = json("""{"a":"line\n\"quoted\" Кино \/","b":[1,2.5,true,null],"c":{}}""")
             as Map<*, *>

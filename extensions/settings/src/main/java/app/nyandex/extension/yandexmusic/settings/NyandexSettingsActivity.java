@@ -201,14 +201,19 @@ public final class NyandexSettingsActivity extends Activity {
                         "Текст откроется сразу, как только начнётся трек"),
                 NyandexSettings.lyricsPrefetch(),
                 NyandexSettings::setLyricsPrefetch);
-        addSwitchRow(
-                NyandexSettings.text("Download lyrics with tracks", "Скачивать тексты вместе с треками"),
-                NyandexSettings.text("Downloaded tracks get their lyrics for offline listening",
-                        "У скачанных треков текст будет доступен без интернета"),
-                NyandexSettings.lyricsDownloadWithTracks(),
-                NyandexSettings::setLyricsDownloadWithTracks);
-
         final TextView[] storageInfo = new TextView[1];
+        final View downloadRow = addSwitchRow(
+                NyandexSettings.text("Download lyrics with tracks", "Скачивать тексты вместе с треками"),
+                NyandexSettings.text("Downloaded tracks get their lyrics for offline listening. "
+                                + "Needs the next setting.",
+                        "У скачанных треков текст будет доступен без интернета. Работает вместе со "
+                                + "следующей настройкой."),
+                NyandexSettings.lyricsDownloadWithTracks(),
+                checked -> {
+                    NyandexSettings.setLyricsDownloadWithTracks(checked);
+                    NyandexSettings.callLyrics("applyStorageSettings");
+                    refreshStorage(storageInfo[0]);
+                });
         addSwitchRow(
                 NyandexSettings.text("Keep lyrics of downloaded tracks", "Не удалять тексты скачанных треков"),
                 NyandexSettings.text("Stored separately and not counted in the limit below",
@@ -217,8 +222,10 @@ public final class NyandexSettingsActivity extends Activity {
                 checked -> {
                     NyandexSettings.setLyricsKeepDownloaded(checked);
                     NyandexSettings.callLyrics("applyStorageSettings");
-                    showStorage(storageInfo[0]);
+                    setRowEnabled(downloadRow, checked);
+                    refreshStorage(storageInfo[0]);
                 });
+        setRowEnabled(downloadRow, NyandexSettings.lyricsKeepDownloaded());
 
         addSubheader(NyandexSettings.text("Saved lyrics limit", "Сколько текстов хранить"));
         addParagraph(NyandexSettings.text(
@@ -236,7 +243,7 @@ public final class NyandexSettingsActivity extends Activity {
                 NyandexSettings.setLyricsCacheLimit(limit);
                 NyandexSettings.callLyrics("trimCache");
                 for (View other : indicators) other.setBackground(radio(other == indicator));
-                showStorage(storageInfo[0]);
+                refreshStorage(storageInfo[0]);
             });
             indicator.setBackground(radio(limit == current));
         }
@@ -252,9 +259,14 @@ public final class NyandexSettingsActivity extends Activity {
         addSubheader(NyandexSettings.text("Storage", "Хранилище"));
         storageInfo[0] = addParagraph("");
         showStorage(storageInfo[0]);
+        addParagraph(NyandexSettings.text(
+                "Clearing also removes the lyrics of downloaded tracks; with \"Download lyrics with tracks\" on "
+                        + "they are loaded again.",
+                "Очистка удаляет и тексты скачанных треков; если включено «Скачивать тексты вместе с "
+                        + "треками», они загрузятся заново."));
         addPillButton(NyandexSettings.text("Clear saved lyrics", "Очистить сохранённые тексты"), view -> {
             NyandexSettings.callLyrics("clearCache");
-            showStorage(storageInfo[0]);
+            refreshStorage(storageInfo[0]);
         });
     }
 
@@ -345,6 +357,19 @@ public final class NyandexSettingsActivity extends Activity {
                         + "Треки без текста тоже учитываются."));
     }
 
+    /** File work runs in the background; update the counts now and once it has likely finished. */
+    private void refreshStorage(final TextView view) {
+        if (view == null) return;
+        showStorage(view);
+        view.postDelayed(() -> showStorage(view), 500);
+        view.postDelayed(() -> showStorage(view), 2500);
+    }
+
+    private static void setRowEnabled(View row, boolean enabled) {
+        row.setEnabled(enabled);
+        row.setAlpha(enabled ? 1f : 0.4f);
+    }
+
     private static String limitLabel(int limit) {
         if (limit == 0) {
             return NyandexSettings.text("Don't save", "Не сохранять");
@@ -425,7 +450,7 @@ public final class NyandexSettingsActivity extends Activity {
         return view;
     }
 
-    private void addSwitchRow(String title, String subtitle, boolean checked, final OnToggle onToggle) {
+    private View addSwitchRow(String title, String subtitle, boolean checked, final OnToggle onToggle) {
         final Switch toggle = new Switch(this);
         toggle.setShowText(false);
         toggle.setThumbDrawable(switchThumb());
@@ -445,6 +470,7 @@ public final class NyandexSettingsActivity extends Activity {
                 info.setClassName(Switch.class.getName());
             }
         });
+        return row;
     }
 
     /** A row with a title, an optional subtitle and a trailing control; the whole row is clickable. */
