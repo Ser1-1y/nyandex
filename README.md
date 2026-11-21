@@ -40,7 +40,7 @@ Morphe Manager compares the full version name, including the build suffix.
 ## Patches
 
 <!-- PATCHES_START EXPANDED -->
-> **[v1.2.0](https://github.com/Ser1-1y/nyandex/releases/tag/v1.2.0)**&nbsp;&nbsp;&middot;&nbsp;&nbsp;`main`&nbsp;&nbsp;&middot;&nbsp;&nbsp;**12 patches** across **1 apps**&nbsp;&nbsp;&middot;&nbsp;&nbsp;[Full details](PATCHES.md)
+> **[v1.2.1](https://github.com/Ser1-1y/nyandex/releases/tag/v1.2.1)**&nbsp;&nbsp;&middot;&nbsp;&nbsp;`main`&nbsp;&nbsp;&middot;&nbsp;&nbsp;**12 patches** across **1 apps**&nbsp;&nbsp;&middot;&nbsp;&nbsp;[Full details](PATCHES.md)
 
 | # | App | Patches | Version | Package |
 |---|---|---|---|---|

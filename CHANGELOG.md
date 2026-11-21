@@ -1,3 +1,9 @@
+## [1.2.1](https://github.com/Ser1-1y/nyandex/compare/v1.2.0...v1.2.1) (2026-11-21)
+
+### 🐛 Bug Fixes
+
+* accept split APK bundles for Yandex Music ([74dc0a8](https://github.com/Ser1-1y/nyandex/commit/74dc0a8767dd50698b9b803819fcd6542f96d7de))
+
 ## [1.2.0](https://github.com/Ser1-1y/nyandex/compare/v1.1.1...v1.2.0) (2026-11-21)
 
 ### ✨ New Features
