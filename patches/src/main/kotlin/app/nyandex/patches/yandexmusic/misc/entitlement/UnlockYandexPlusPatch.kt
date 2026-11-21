@@ -64,8 +64,7 @@ private fun entitlementOverrides(sessionClass: String) = listOf(
 
 val unlockYandexPlusPatch = patch(
     name = "Разблокировать Яндекс Плюс",
-    description = "Принудительно задаёт hasPlus, hasMusicSubscription, serviceAvailable и isChild " +
-        "в DTO музыкальной сессии и профиля Passport. Сервер по-прежнему видит настоящий аккаунт.",
+    description = "Разблокирует клиентский код, включающий подписку Plus.",
 ) {
     compatibleWith(COMPATIBILITY_YANDEX_MUSIC)
 

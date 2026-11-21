@@ -38,7 +38,7 @@ private val TRIGGER_PATHS = arrayOf(
 val blockPlusEventsPatch = patch(
     name = "Блокировать аналитику Плюса",
     description = "Перенаправляет на localhost хосты событий и привлечения Плюса, а также устаревшие " +
-        "триггеры динамических страниц. API музыки и платежей не затрагиваются.",
+        "триггеры динамических страниц.",
 ) {
     compatibleWith(COMPATIBILITY_YANDEX_MUSIC)
 

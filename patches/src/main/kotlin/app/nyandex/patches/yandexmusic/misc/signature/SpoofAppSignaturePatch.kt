@@ -20,8 +20,8 @@ import app.nyandex.patches.yandexmusic.shared.Constants.COMPATIBILITY_YANDEX_MUS
  */
 val spoofAppSignaturePatch = patch(
     name = "Подменить подпись приложения",
-    description = "Приложение видит свою оригинальную подпись Яндекса, поэтому вход через Яндекс ID и " +
-        "другие проверки подписи работают после переподписи APK в Morphe. Нужен для входа.",
+    description = "Нужен для входа. Приложение видит свою оригинальную подпись Яндекса, поэтому вход через Яндекс ID и " +
+        "другие проверки подписи работают после переподписи APK в Morphe.",
 ) {
     compatibleWith(COMPATIBILITY_YANDEX_MUSIC)
 

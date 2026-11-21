@@ -75,10 +75,7 @@ internal val MONET_COLORS = linkedMapOf(
 
 val monetThemePatch = patch(
     name = "Тема Monet",
-    description = "Окрашивает карточки, акценты, основную кнопку, кнопку воспроизведения в плеере и " +
-        "кнопки «Моей волны» в цвета обоев Android 12+ (Material You); фон страниц остаётся чёрным. " +
-        "Настройка «Светлая / Тёмная / Системная» продолжает работать. На старых версиях Android " +
-        "цвета остаются стандартными.",
+    description = "(Android 12+) Окрашивает большУю часть элементов интерфейсов в цвета Material You, генерируемые из Ваших обоев.",
     default = false,
 ) {
     compatibleWith(COMPATIBILITY_YANDEX_MUSIC)

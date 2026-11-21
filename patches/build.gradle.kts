@@ -5,7 +5,7 @@ group = "app.nyandex"
 patches {
     about {
         name = "Nyandex"
-        description = "Yandex Music patches for Morphe: LRCLIB lyrics, Monet theme, hidden tabs and privacy fixes"
+        description = "Патчи на Яндекс Музыку: кастомные тексты песен LRCLIB, Monet тема, кастомизация и приватность."
         source = "git@github.com:Ser1-1y/nyandex.git"
         author = "Nyandex contributors"
         contact = "https://github.com/Ser1-1y/nyandex/issues"

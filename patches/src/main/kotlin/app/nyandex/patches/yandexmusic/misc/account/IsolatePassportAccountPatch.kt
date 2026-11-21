@@ -49,8 +49,7 @@ private const val SHARED_PERMISSION_PREFIX = "com.yandex.permission."
  */
 val isolatePassportAccountPatch = patch(
     name = "Отдельный аккаунт Passport",
-    description = "Даёт переподписанному приложению собственный тип аккаунта Passport, чтобы Android " +
-        "разрешил создать в нём аккаунт Яндекса, а оригинальные приложения Яндекса сохранили общий.",
+    description = "Требуется для работы. Создаёт собственный тип аккаунта Passport, не мешая работе других приложений Яндекс.",
 ) {
     compatibleWith(COMPATIBILITY_YANDEX_MUSIC)
 

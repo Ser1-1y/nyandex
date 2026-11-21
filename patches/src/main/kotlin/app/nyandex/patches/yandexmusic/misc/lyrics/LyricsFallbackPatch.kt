@@ -61,9 +61,7 @@ private const val ARRAY_LIST = "Ljava/util/ArrayList;"
 
 val lyricsFallbackPatch = patch(
     name = "Тексты песен из LRCLIB",
-    description = "Тексты песен загружаются только из LRCLIB (lrclib.net), API текстов Яндекса не используется. " +
-        "Текст можно открыть у любого трека; текст следующего трека и скачанных треков загружается заранее " +
-        "и сохраняется для офлайна. Если LRCLIB недоступен, появляется уведомление.",
+    description = "Получает тексты песен из LRCLIB. API текстов Яндекса не используется.",
 ) {
     compatibleWith(COMPATIBILITY_YANDEX_MUSIC)
 

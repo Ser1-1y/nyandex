@@ -44,8 +44,7 @@ private val BILLING_STRINGS = arrayOf(
 
 val disablePlayBillingPatch = patch(
     name = "Отключить Play Billing",
-    description = "Отключает вызовы Play Billing и Play Core. Покупки становятся недоступны, " +
-        "и ни один платёжный запрос не доходит до Google Play.",
+    description = "Отключает вызовы Play Billing и Play Core. Делает покупки недоступными.",
 ) {
     compatibleWith(COMPATIBILITY_YANDEX_MUSIC)
 
