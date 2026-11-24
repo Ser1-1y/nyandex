@@ -27,7 +27,7 @@ private const val FUNCTION0 = "Lkotlin/jvm/functions/Function0;"
 
 val hidePromoPatch = patch(
     name = "Скрыть рекламу и промо",
-    description = "Добавляет настройки скрытия промо и рекламных блоков в параметры Nyandex.",
+    description = "Добавляет настройки скрытия промо и рекламы в параметры Nyandex.",
 ) {
     compatibleWith(COMPATIBILITY_YANDEX_MUSIC)
 
