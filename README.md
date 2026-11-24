@@ -47,6 +47,7 @@ Only those versions are tested on.
 - **Clean share links** removes `utm_*` and `ref_id` from shared and copied links.
 - **Monet** theme for Android 12+.
 - **Hide tabs** from the Bottom bar (Settings -> Nyandex settings).
+- **Hide promo** blocks, Plus offers and banners (Settings -> Nyandex settings).
 - **Haptic feedback** adds a short vibration to taps on buttons and tabs, long presses and
   pull-to-refresh. You can configure what triggers the vibrations in Nyandex settings.
 

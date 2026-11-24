@@ -146,6 +146,10 @@ public final class NyandexSettingsActivity extends Activity {
             addBottomTabsSection();
             anySection = true;
         }
+        if (NyandexSettings.promoAvailable()) {
+            addPromoSection();
+            anySection = true;
+        }
         if (NyandexSettings.hapticsAvailable()) {
             addHapticsSection();
             anySection = true;
@@ -266,6 +270,25 @@ public final class NyandexSettingsActivity extends Activity {
             NyandexSettings.callLyrics("clearCache");
             refreshStorage(storageInfo[0]);
         });
+    }
+
+    private void addPromoSection() {
+        addSectionHeader(NyandexSettings.text("Promo and ads", "Промо и реклама"));
+        addParagraph(NyandexSettings.text(
+                "Hidden blocks disappear the next time a screen loads (pull to refresh or reopen it).",
+                "Скрытые блоки пропадут при следующей загрузке экрана (обновите свайпом или откройте заново)."));
+        addSwitchRow(
+                NyandexSettings.text("Hide promo blocks", "Скрыть промо-блоки"),
+                NyandexSettings.text("Promotions on the home feed, album and artist promos",
+                        "Акции в ленте, промо альбомов и исполнителей"),
+                NyandexSettings.hidePromo(),
+                NyandexSettings::setHidePromo);
+        addSwitchRow(
+                NyandexSettings.text("Hide Plus offers and banners", "Скрыть предложения Плюса и баннеры"),
+                NyandexSettings.text("Subscription offers and banner blocks",
+                        "Предложения подписки и баннеры"),
+                NyandexSettings.hideOffers(),
+                NyandexSettings::setHideOffers);
     }
 
     private void addHapticsSection() {
