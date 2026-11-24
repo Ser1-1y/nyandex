@@ -34,11 +34,11 @@ Only those versions are tested on.
 ## Patches
 
 <!-- PATCHES_START EXPANDED -->
-> **[v1.6.0](https://github.com/Ser1-1y/nyandex/releases/tag/v1.6.0)**&nbsp;&nbsp;&middot;&nbsp;&nbsp;`main`&nbsp;&nbsp;&middot;&nbsp;&nbsp;**14 patches** across **1 apps**&nbsp;&nbsp;&middot;&nbsp;&nbsp;[Full details](PATCHES.md)
+> **[v1.7.0](https://github.com/Ser1-1y/nyandex/releases/tag/v1.7.0)**&nbsp;&nbsp;&middot;&nbsp;&nbsp;`main`&nbsp;&nbsp;&middot;&nbsp;&nbsp;**15 patches** across **1 apps**&nbsp;&nbsp;&middot;&nbsp;&nbsp;[Full details](PATCHES.md)
 
 | # | App | Patches | Version | Package |
 |---|---|---|---|---|
-| 1 | [**Yandex Music**](PATCHES.md#yandex-music-ruyandexmusic) | 14 | `2026.11.1 #171gpr`, `2026.11.2 #172.1gpr` | [`ru.yandex.music`](https://play.google.com/store/apps/details?id=ru.yandex.music) |
+| 1 | [**Yandex Music**](PATCHES.md#yandex-music-ruyandexmusic) | 15 | `2026.11.1 #171gpr`, `2026.11.2 #172.1gpr` | [`ru.yandex.music`](https://play.google.com/store/apps/details?id=ru.yandex.music) |
 <!-- PATCHES_END -->
 
 ## Notes

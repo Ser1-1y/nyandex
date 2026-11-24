@@ -39,11 +39,11 @@ Nyandex не связан ни с Яндексом, ни с Morphe.
 ## Патчи
 
 <!-- PATCHES_START EXPANDED -->
-> **[v1.6.0](https://github.com/Ser1-1y/nyandex/releases/tag/v1.6.0)**&nbsp;&nbsp;&middot;&nbsp;&nbsp;`main`&nbsp;&nbsp;&middot;&nbsp;&nbsp;Патчей: **14** · Приложений: **1**&nbsp;&nbsp;&middot;&nbsp;&nbsp;[Подробнее](PATCHES.md)
+> **[v1.7.0](https://github.com/Ser1-1y/nyandex/releases/tag/v1.7.0)**&nbsp;&nbsp;&middot;&nbsp;&nbsp;`main`&nbsp;&nbsp;&middot;&nbsp;&nbsp;Патчей: **15** · Приложений: **1**&nbsp;&nbsp;&middot;&nbsp;&nbsp;[Подробнее](PATCHES.md)
 
 | # | Приложение | Патчи | Версия | Пакет |
 |---|---|---|---|---|
-| 1 | [**Yandex Music**](PATCHES.md#yandex-music-ruyandexmusic) | 14 | `2026.11.1 #171gpr`, `2026.11.2 #172.1gpr` | [`ru.yandex.music`](https://play.google.com/store/apps/details?id=ru.yandex.music) |
+| 1 | [**Yandex Music**](PATCHES.md#yandex-music-ruyandexmusic) | 15 | `2026.11.1 #171gpr`, `2026.11.2 #172.1gpr` | [`ru.yandex.music`](https://play.google.com/store/apps/details?id=ru.yandex.music) |
 <!-- PATCHES_END -->
 
 ## Примечания
