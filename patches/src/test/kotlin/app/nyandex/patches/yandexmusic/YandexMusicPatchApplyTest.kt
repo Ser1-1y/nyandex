@@ -392,6 +392,16 @@ class YandexMusicPatchApplyTest {
         }
         assertEquals(1, tabSites.size, "Expected one bottom bar method calling filterTabs")
 
+        // The bar registers itself on every collect and can collect again on request, so tabs
+        // hidden on the settings page apply without a restart.
+        val barClass = classes.single { classDef -> classDef.methods.any { it == tabSites.single() } }
+        assertTrue(calls(tabSites.single()).any { it.isCall(BOTTOM_TABS_HOOK, "register") }, "The bar is not registered")
+        val refresh = barClass.methods.single { it.name == "nyandexRefreshTabs" }
+        assertTrue(
+            calls(refresh).any { it.definingClass == barClass.type && it.name == tabSites.single().name },
+            "nyandexRefreshTabs does not run the tab collection",
+        )
+
         // The settings activity is declared in the manifest.
         val manifest = aapt2("dump", "xmltree", "--file", "AndroidManifest.xml", apk.absolutePath)
         assertTrue(

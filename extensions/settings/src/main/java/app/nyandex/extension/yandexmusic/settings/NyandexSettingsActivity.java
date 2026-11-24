@@ -8,9 +8,7 @@
 package app.nyandex.extension.yandexmusic.settings;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.Context;
-import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.content.res.Configuration;
 import android.content.res.Resources;
@@ -26,7 +24,6 @@ import android.graphics.drawable.RippleDrawable;
 import android.graphics.drawable.StateListDrawable;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Process;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -52,9 +49,6 @@ public final class NyandexSettingsActivity extends Activity {
     private LinearLayout content;
     private Palette palette;
     private Fonts fonts;
-
-    /** Whether a setting that needs a restart was changed while the page was open. */
-    private boolean changed;
 
     /** Colors of the app's settings screen. */
     private static final class Palette {
@@ -308,8 +302,8 @@ public final class NyandexSettingsActivity extends Activity {
     private void addBottomTabsSection() {
         addSectionHeader(NyandexSettings.text("Bottom bar", "Нижняя панель"));
         addParagraph(NyandexSettings.text(
-                "Choose the tabs to show. Changes apply after the app restarts; at least one tab always stays.",
-                "Выберите, какие вкладки показывать. Изменения применятся после перезапуска приложения; "
+                "Choose the tabs to show. Changes apply at once; at least one tab always stays.",
+                "Выберите, какие вкладки показывать. Изменения применяются сразу; "
                         + "хотя бы одна вкладка остаётся всегда."));
 
         addSwitchRow(
@@ -325,10 +319,9 @@ public final class NyandexSettingsActivity extends Activity {
             boolean hidden = preferences != null && NyandexSettings.isTabHidden(preferences, name);
             addSwitchRow(NyandexSettings.isRussian() ? tab[2] : tab[1], null, !hidden, shown -> {
                 NyandexSettings.setTabHidden(name, !shown);
-                changed = true;
+                BottomTabsHook.refreshTabs();
             });
         }
-        addPillButton(NyandexSettings.text("Restart the app", "Перезапустить приложение"), view -> restartApp());
     }
 
     private void addOffsetRow() {
@@ -757,38 +750,14 @@ public final class NyandexSettingsActivity extends Activity {
 
     // endregion
 
-    private void restartApp() {
-        Intent launch = getPackageManager().getLaunchIntentForPackage(getPackageName());
-        if (launch != null) {
-            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-            startActivity(launch);
-        }
-        finishAffinity();
-        Process.killProcess(Process.myPid());
-    }
-
     @Override
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
         leave();
     }
 
-    /** Close the page; after a change, recommend restarting the app first. */
     private void leave() {
-        if (!changed) {
-            finish();
-            return;
-        }
-        new AlertDialog.Builder(this)
-                .setTitle(NyandexSettings.text("Restart the app?", "Перезапустить приложение?"))
-                .setMessage(NyandexSettings.text(
-                        "Some changes apply only after the app restarts.",
-                        "Часть изменений применится только после перезапуска приложения."))
-                .setPositiveButton(NyandexSettings.text("Restart", "Перезапустить"),
-                        (dialog, which) -> restartApp())
-                .setNegativeButton(NyandexSettings.text("Later", "Позже"),
-                        (dialog, which) -> finish())
-                .show();
+        finish();
     }
 
     private LinearLayout.LayoutParams matchWrap() {
