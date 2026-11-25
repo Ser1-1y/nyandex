@@ -92,6 +92,7 @@ private val TELEMETRY_LITERALS = listOf(
     "https://%sconversions.%s/api/v",
     "appsflyersdk.com",
     "https://startup.mobile.yandex.net/",
+    "startup.mobile.webvisor.com",
     "https://appmetrica.yandex.com/docs/",
     "io.appmetrica.analytics.internal.IAppMetricaService",
     "io.appmetrica.analytics.IAppMetricaService",
@@ -247,6 +248,7 @@ class YandexMusicPatchApplyTest {
         verifyV2TriggerAnnotations(dexFiles)
         verifyFirebaseCertificate(dexFiles)
         verifyPassportAccountType(dexFiles, instructionStrings, output)
+        verifyTelemetryManifest(output)
         verifyLyricsFallback(dexFiles)
         verifyLyricsPrefetch(dexFiles)
         verifyTrackCacheRow(dexFiles)
@@ -828,6 +830,40 @@ class YandexMusicPatchApplyTest {
             manifest.contains("\"com.yandex.permission.AM_COMMUNICATION\""),
             "The AM_COMMUNICATION request the Passport library checks for was removed",
         )
+    }
+
+    private fun verifyTelemetryManifest(apk: File) {
+        val manifest = aapt2("dump", "xmltree", "--file", "AndroidManifest.xml", apk.absolutePath)
+        fun declares(name: String) = manifest.contains("\"$name\"")
+
+        listOf(
+            "io.appmetrica.analytics.internal.AppMetricaService",
+            "io.appmetrica.analytics.internal.AppMetricaMainProcessService",
+            "io.appmetrica.analytics.internal.PreloadInfoContentProvider",
+            "com.google.firebase.sessions.SessionLifecycleService",
+            "com.google.android.datatransport.runtime.backends.TransportBackendDiscovery",
+            "com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService",
+            "com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver",
+            "com.appsflyer.MultipleInstallBroadcastReceiver",
+            "com.google.android.gms.permission.AD_ID",
+            "android.permission.ACCESS_ADSERVICES_ATTRIBUTION",
+            "com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE",
+            "com.appsflyer.referrer.INSTALL_PROVIDER",
+            "com.yandex.android.advid.IDENTIFIER_SERVICE",
+            "com.uodis.opendevice.OPENIDS_SERVICE",
+            "com.yandex.preinstallsatellite.appmetrica.AppMetricaContentProvider",
+        ).forEach { assertFalse(declares(it), "Telemetry manifest entry remains: $it") }
+
+        // Notifications must keep working.
+        listOf(
+            "ru.yandex.music.push.update.YaMetricaMessagingService",
+            "com.yandex.metrica.push.firebase.MetricaMessagingService",
+            "com.yandex.metrica.push.service.PushService",
+            "com.google.firebase.messaging.FirebaseMessagingService",
+            "com.google.firebase.iid.FirebaseInstanceIdReceiver",
+            "firebase_crashlytics_collection_enabled",
+            "firebase_sessions_enabled",
+        ).forEach { assertTrue(declares(it), "Manifest entry is missing: $it") }
     }
 
     private fun resolveAapt2(): File {
