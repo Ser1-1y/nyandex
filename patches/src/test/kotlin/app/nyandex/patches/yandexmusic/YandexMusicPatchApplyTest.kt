@@ -23,9 +23,7 @@ import app.nyandex.patches.yandexmusic.misc.network.cleanShareLinksPatch
 import app.nyandex.patches.yandexmusic.misc.network.removeTrackingHeadersPatch
 import app.nyandex.patches.yandexmusic.misc.signature.spoofFirebaseCertPatch
 import app.nyandex.patches.yandexmusic.misc.telemetry.disableTelemetryPatch
-import com.android.tools.smali.dexlib2.DexFileFactory
 import com.android.tools.smali.dexlib2.Opcode
-import com.android.tools.smali.dexlib2.Opcodes
 import com.android.tools.smali.dexlib2.iface.Annotation
 import com.android.tools.smali.dexlib2.iface.ClassDef
 import com.android.tools.smali.dexlib2.iface.DexFile
@@ -44,8 +42,6 @@ import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import java.io.File
-import java.nio.file.Files
-import java.util.zip.ZipFile
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -215,7 +211,7 @@ class YandexMusicPatchApplyTest {
 
         assertTrue(output.isFile && output.length() > 0, "Patched APK was not written")
 
-        val dexFiles = extractDexFiles(output)
+        val dexFiles = loadDexFiles(output)
         val instructionStrings = dexFiles.flatMapTo(mutableSetOf()) { dex ->
             dex.classes.flatMap { classDef ->
                 classDef.methods.flatMap { method ->
@@ -248,9 +244,9 @@ class YandexMusicPatchApplyTest {
             assertFalse(instructionStrings.any { it.contains(path) }, "v2 trigger path remains: $path")
         }
 
-        verifyVuTriggerAnnotations(dexFiles)
+        verifyV2TriggerAnnotations(dexFiles)
         verifyFirebaseCertificate(dexFiles)
-        verifyPassportAccountType(dexFiles, output)
+        verifyPassportAccountType(dexFiles, instructionStrings, output)
         verifyLyricsFallback(dexFiles)
         verifyLyricsPrefetch(dexFiles)
         verifyTrackCacheRow(dexFiles)
@@ -369,7 +365,7 @@ class YandexMusicPatchApplyTest {
         val settings = classes.single { it.type == NYANDEX_SETTINGS }
         assertTrue(classes.any { it.type == SETTINGS_ACTIVITY_TYPE }, "Settings activity class was not merged")
 
-        // "Hide bottom bar tabs" turns the tab section on.
+        // hideBottomBarTabsPatch turns the tab section on.
         val available = settings.methods.single { it.name == "bottomTabsAvailable" }
         val first = available.implementation!!.instructions.first()
         assertEquals(Opcode.CONST_4, first.opcode, "bottomTabsAvailable was not patched")
@@ -578,12 +574,6 @@ class YandexMusicPatchApplyTest {
             "LRCLIB core class was not merged",
         )
 
-        fun MethodReference.isCall(owner: String, name: String) = definingClass == owner && this.name == name
-        fun calls(method: com.android.tools.smali.dexlib2.iface.Method) =
-            method.implementation?.instructions?.mapNotNull {
-                (it as? ReferenceInstruction)?.reference as? MethodReference
-            }.orEmpty()
-
         // Track model: a static helper hands id/title/duration/artists to the extension and marks
         // the track as having lyrics, and the constructor calls it.
         val track = classes.single { classDef ->
@@ -671,11 +661,6 @@ class YandexMusicPatchApplyTest {
 
     private fun verifyLyricsPrefetch(dexFiles: List<DexFile>) {
         val classes = dexFiles.flatMap { it.classes }
-        fun calls(method: com.android.tools.smali.dexlib2.iface.Method) =
-            method.implementation?.instructions?.mapNotNull {
-                (it as? ReferenceInstruction)?.reference as? MethodReference
-            }.orEmpty()
-
         val track = classes.single { classDef -> classDef.methods.any { it.name == "nyandexPrefetchNextLyrics" } }
         val helper = track.methods.single { it.name == "nyandexPrefetchNextLyrics" }
         assertTrue(
@@ -706,11 +691,6 @@ class YandexMusicPatchApplyTest {
 
     private fun verifyTrackCacheRow(dexFiles: List<DexFile>) {
         val classes = dexFiles.flatMap { it.classes }
-        fun calls(method: com.android.tools.smali.dexlib2.iface.Method) =
-            method.implementation?.instructions?.mapNotNull {
-                (it as? ReferenceInstruction)?.reference as? MethodReference
-            }.orEmpty()
-
         val row = classes.single { classDef -> classDef.methods.any { it.name == "nyandexLyricsCacheRow" } }
         assertTrue(
             row.methods.any { method ->
@@ -758,26 +738,7 @@ class YandexMusicPatchApplyTest {
         )
     }
 
-    private fun extractDexFiles(apk: File): List<DexFile> {
-        val directory = Files.createTempDirectory("ym-patched-dex").toFile()
-        ZipFile(apk).use { zip ->
-            zip.entries().asSequence()
-                .filter { it.name.matches(Regex("classes\\d*\\.dex")) }
-                .forEach { entry ->
-                    val dexFile = File(directory, entry.name)
-                    zip.getInputStream(entry).use { input ->
-                        dexFile.outputStream().use { output -> input.copyTo(output) }
-                    }
-                }
-        }
-
-        return directory.listFiles { file -> file.extension == "dex" }
-            .orEmpty()
-            .sortedBy { it.name }
-            .map { file -> DexFileFactory.loadDexFile(file, Opcodes.getDefault()) }
-    }
-
-    private fun verifyVuTriggerAnnotations(dexFiles: List<DexFile>) {
+    private fun verifyV2TriggerAnnotations(dexFiles: List<DexFile>) {
         val triggerApi = dexFiles.asSequence()
             .flatMap { it.classes.asSequence() }
             .firstOrNull { it.type == "Lcom/yandex/music/shared/bdu/trigger/network/TriggerApi;" }
@@ -825,17 +786,7 @@ class YandexMusicPatchApplyTest {
         )
     }
 
-    private fun verifyPassportAccountType(dexFiles: List<DexFile>, apk: File) {
-        val strings = dexFiles.flatMap { dex ->
-            dex.classes.flatMap { classDef ->
-                classDef.methods.flatMap { method ->
-                    (method.implementation?.instructions ?: emptyList()).mapNotNull { instruction ->
-                        ((instruction as? ReferenceInstruction)?.reference as? StringReference)?.string
-                    }
-                }
-            }
-        }
-
+    private fun verifyPassportAccountType(dexFiles: List<DexFile>, instructionStrings: Set<String>, apk: File) {
         val fieldStrings = dexFiles.flatMap { dex ->
             dex.classes.flatMap { classDef ->
                 classDef.staticFields.mapNotNull { field ->
@@ -843,7 +794,7 @@ class YandexMusicPatchApplyTest {
                 }
             }
         }
-        val allStrings = strings + fieldStrings
+        val allStrings = instructionStrings + fieldStrings
 
         assertFalse(
             allStrings.any { it == STOCK_ACCOUNT_TYPE },
@@ -854,12 +805,7 @@ class YandexMusicPatchApplyTest {
             "The isolated Passport account type was not written to DEX",
         )
 
-        val aapt2 = resolveAapt2()
-        val process = ProcessBuilder(aapt2.absolutePath, "dump", "resources", apk.absolutePath)
-            .redirectErrorStream(true)
-            .start()
-        val dump = process.inputStream.bufferedReader().use { it.readText() }
-        assertEquals(0, process.waitFor(), "aapt2 dump resources failed")
+        val dump = aapt2("dump", "resources", apk.absolutePath)
 
         val value = Regex(
             """resource\s+\S+\s+string/passport_account_type\s*\r?\n\s*\(\)\s+"([^"]*)"""",
